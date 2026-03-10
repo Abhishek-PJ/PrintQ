@@ -1,0 +1,79 @@
+import { Response } from "express";
+import { Shop } from "../models/Shop";
+import { AuthRequest } from "../types";
+
+export const registerShop = async (req: AuthRequest, res: Response): Promise<void> => {
+  const existing = await Shop.findOne({ owner: req.user?.userId });
+  if (existing) {
+    res.status(409).json({ message: "You already have a shop registered", shop: existing });
+    return;
+  }
+
+  const { name, address, phone, services, pricing } = req.body as {
+    name: string;
+    address: string;
+    phone: string;
+    services: string[];
+    pricing?: { bwSingle: number; bwDouble: number; colorSingle: number; colorDouble: number };
+  };
+
+  if (!name || !address || !phone) {
+    res.status(400).json({ message: "name, address and phone are required" });
+    return;
+  }
+
+  const shop = await Shop.create({
+    owner: req.user?.userId,
+    name,
+    address,
+    phone,
+    services: services || [],
+    pricing: pricing || {},
+    status: "pending"
+  });
+
+  res.status(201).json({ message: "Shop submitted for approval", shop });
+};
+
+export const getMyShop = async (req: AuthRequest, res: Response): Promise<void> => {
+  const shop = await Shop.findOne({ owner: req.user?.userId });
+  res.json({ shop: shop || null });
+};
+
+export const updateShopPricing = async (req: AuthRequest, res: Response): Promise<void> => {
+  const shop = await Shop.findOne({ owner: req.user?.userId });
+  if (!shop) {
+    res.status(404).json({ message: "Shop not found" });
+    return;
+  }
+
+  const { bwSingle, bwDouble, colorSingle, colorDouble } = req.body as {
+    bwSingle: number;
+    bwDouble: number;
+    colorSingle: number;
+    colorDouble: number;
+  };
+
+  if (
+    typeof bwSingle !== "number" || bwSingle < 0 ||
+    typeof bwDouble !== "number" || bwDouble < 0 ||
+    typeof colorSingle !== "number" || colorSingle < 0 ||
+    typeof colorDouble !== "number" || colorDouble < 0
+  ) {
+    res.status(400).json({ message: "All pricing values must be non-negative numbers" });
+    return;
+  }
+
+  shop.pricing = { bwSingle, bwDouble, colorSingle, colorDouble };
+  await shop.save();
+
+  res.json({ message: "Pricing updated", shop });
+};
+
+export const getApprovedShops = async (_req: AuthRequest, res: Response): Promise<void> => {
+  const shops = await Shop.find({ status: "approved" })
+    .populate("owner", "name email")
+    .sort({ name: 1 });
+
+  res.json({ shops });
+};
