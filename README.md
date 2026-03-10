@@ -1,6 +1,6 @@
 # PrintQ — Intelligent Print Queue Management
 
-A full-stack MERN application for managing college print-shop queues in real time. Students upload documents, get a live token, and track their order status. Shop admins manage the live queue and history. Super admins oversee shops, users, and all orders.
+A full-stack MERN application for managing print-shop queues in real time. Users upload documents, get a live token, and track their order status. Shop admins manage the live queue and history. Super admins oversee shops, users, and all orders.
 
 ---
 
