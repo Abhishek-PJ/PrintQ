@@ -2,7 +2,10 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { useAuth } from "./context/AuthContext";
-import AdminDashboard from "./pages/AdminDashboard";
+import AdminLayout from "./pages/AdminLayout";
+import AdminQueue from "./pages/AdminQueue";
+import AdminAnalytics from "./pages/AdminAnalytics";
+import AdminHistory from "./pages/AdminHistory";
 import AdminShopRegistration from "./pages/AdminShopRegistration";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
@@ -24,7 +27,7 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {location.pathname !== "/" && !location.pathname.startsWith("/student") && <Navbar />}
+      {location.pathname !== "/" && !location.pathname.startsWith("/student") && !location.pathname.startsWith("/admin") && <Navbar />}
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
@@ -46,19 +49,15 @@ const App = () => {
           path="/admin"
           element={
             <ProtectedRoute roles={["admin"]}>
-              <AdminDashboard />
+              <AdminLayout />
             </ProtectedRoute>
           }
-        />
-
-        <Route
-          path="/admin/shop"
-          element={
-            <ProtectedRoute roles={["admin"]}>
-              <AdminShopRegistration />
-            </ProtectedRoute>
-          }
-        />
+        >
+          <Route index element={<AdminQueue />} />
+          <Route path="analytics" element={<AdminAnalytics />} />
+          <Route path="history" element={<AdminHistory />} />
+          <Route path="shop" element={<AdminShopRegistration />} />
+        </Route>
 
         <Route
           path="/superadmin"

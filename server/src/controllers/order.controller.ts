@@ -98,7 +98,9 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
 };
 
 export const getMyOrders = async (req: AuthRequest, res: Response): Promise<void> => {
-  const orders = await IOrder.find({ student: req.user?.userId }).sort({ createdAt: -1 });
+  const orders = await IOrder.find({ student: req.user?.userId })
+    .populate("shop", "name")
+    .sort({ createdAt: -1 });
   res.json({ orders });
 };
 
@@ -109,9 +111,9 @@ export const getQueue = async (req: AuthRequest, res: Response): Promise<void> =
     return;
   }
 
-  const queue = await IOrder.find({ shop: shop._id, status: { $ne: "completed" } })
+  const queue = await IOrder.find({ shop: shop._id, status: { $nin: ["completed", "skipped"] } })
     .populate("student", "name email")
-    .sort({ token: 1 });
+    .sort({ priority: -1, createdAt: 1 });
 
   res.json({ queue });
 };
@@ -179,7 +181,20 @@ export const updateOrderAction = async (req: AuthRequest, res: Response): Promis
   await order.save();
 
   if (action === "print") {
-    await triggerPrintJob(id);
+    try {
+      await triggerPrintJob(id);
+    } catch (err) {
+      // Revert the status change so the admin can retry
+      order.status = "called";
+      await order.save();
+      emitQueueUpdate({ type: "ORDER_UPDATED", orderId: order._id, token: order.token, status: order.status });
+      const message =
+        (err as Error).message === "AGENT_OFFLINE"
+          ? "Print agent is offline. Make sure the PrintQ Agent is running on the shop computer."
+          : "Failed to dispatch print job. Please try again.";
+      res.status(503).json({ message });
+      return;
+    }
   }
 
   // Delete file from S3 immediately on completion; skipped files are cleaned up by cron after 1 day
@@ -252,6 +267,142 @@ export const markPaid = async (req: AuthRequest, res: Response): Promise<void> =
 
   emitQueueUpdate({ type: "ORDER_UPDATED", orderId: order._id, token: order.token, status: order.status });
   res.json({ message: "Payment marked as paid", order });
+};
+
+export const getOrderQueueStatus = async (req: AuthRequest, res: Response): Promise<void> => {
+  const { id } = req.params;
+
+  const order = await IOrder.findOne({ _id: id, student: req.user?.userId });
+  if (!order) {
+    res.status(404).json({ message: "Order not found" });
+    return;
+  }
+
+  const isActive = order.status !== "completed" && order.status !== "skipped";
+  if (!isActive) {
+    res.json({ inQueue: false, position: 0, ordersAhead: 0, estimatedMinutes: 0, totalInQueue: 0 });
+    return;
+  }
+
+  const activeQueue = await IOrder.find({
+    shop: order.shop,
+    status: { $nin: ["completed", "skipped"] },
+  }).sort({ priority: -1, createdAt: 1 });
+
+  const index = activeQueue.findIndex((o) => String(o._id) === String(id));
+  const ordersAhead = index < 0 ? 0 : index;
+
+  let etaMinutes = 0;
+  for (let i = 0; i < ordersAhead; i++) {
+    const o = activeQueue[i];
+    etaMinutes += 1; // 1 min setup per order
+    for (const rule of o.printOptions.printRules) {
+      const pages = (rule.toPage - rule.fromPage + 1) * o.printOptions.copies;
+      etaMinutes += rule.colorMode === "bw" ? pages * (5 / 60) : pages * (10 / 60);
+    }
+  }
+
+  res.json({
+    inQueue: true,
+    position: index < 0 ? activeQueue.length + 1 : index + 1,
+    ordersAhead,
+    estimatedMinutes: Math.ceil(etaMinutes),
+    totalInQueue: activeQueue.length,
+  });
+};
+
+export const editOrder = async (req: AuthRequest, res: Response): Promise<void> => {
+  const { id } = req.params;
+
+  const order = await IOrder.findOne({ _id: id, student: req.user?.userId }).populate("shop", "name");
+  if (!order) {
+    res.status(404).json({ message: "Order not found" });
+    return;
+  }
+
+  if (order.status !== "pending") {
+    res.status(400).json({ message: "Order can only be edited while it is pending" });
+    return;
+  }
+
+  const { printRules, copies, paperSize, binding } = req.body as {
+    printRules?: PrintRule[];
+    copies?: number;
+    paperSize?: "A4" | "A3";
+    binding?: "none" | "spiral" | "staple";
+  };
+
+  if (printRules !== undefined) {
+    if (!Array.isArray(printRules) || printRules.length === 0) {
+      res.status(400).json({ message: "At least one print rule is required" });
+      return;
+    }
+    order.printOptions.printRules = printRules;
+  }
+  if (copies !== undefined) order.printOptions.copies = Math.max(1, Number(copies));
+  if (paperSize !== undefined && ["A4", "A3"].includes(paperSize)) order.printOptions.paperSize = paperSize;
+  if (binding !== undefined && ["none", "spiral", "staple"].includes(binding)) order.printOptions.binding = binding;
+
+  const shop = await Shop.findById(order.shop);
+  if (shop) {
+    const { breakdown, total } = calculatePrice(order.printOptions.printRules, order.printOptions.copies, shop.pricing);
+    order.totalPrice = total;
+    order.priceBreakdown = breakdown;
+  }
+
+  await order.save();
+  emitQueueUpdate({ type: "ORDER_UPDATED", orderId: order._id, token: order.token, status: order.status });
+  res.json({ message: "Order updated", order });
+};
+
+export const deleteOrder = async (req: AuthRequest, res: Response): Promise<void> => {
+  const { id } = req.params;
+
+  const order = await IOrder.findOne({ _id: id, student: req.user?.userId });
+  if (!order) {
+    res.status(404).json({ message: "Order not found" });
+    return;
+  }
+
+  if (order.status !== "pending") {
+    res.status(400).json({ message: "Order can only be deleted while it is pending" });
+    return;
+  }
+
+  if (order.fileKey && !order.fileDeleted) {
+    try { await deleteFromS3(order.fileKey); } catch { /* non-fatal */ }
+  }
+
+  emitQueueUpdate({ type: "ORDER_UPDATED", orderId: order._id, token: order.token, status: order.status });
+  await order.deleteOne();
+  res.json({ message: "Order deleted" });
+};
+
+export const setPriorityOrder = async (req: AuthRequest, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const { priority } = req.body as { priority?: boolean };
+
+  const shop = await Shop.findOne({ owner: req.user?.userId });
+  if (!shop) {
+    res.status(400).json({ message: "No shop registered" });
+    return;
+  }
+
+  const order = await IOrder.findOne({ _id: id, shop: shop._id });
+  if (!order) {
+    res.status(404).json({ message: "Order not found" });
+    return;
+  }
+
+  if (order.status === "completed" || order.status === "skipped") {
+    res.status(400).json({ message: "Cannot prioritize a completed or skipped order" });
+    return;
+  }
+
+  order.priority = priority !== false;
+  await order.save();
+  emitQueueUpdate({ type: "ORDER_UPDATED", orderId: order._id, token: order.token, status: order.status });
+  res.json({ message: order.priority ? "Order marked as priority" : "Priority removed", order });
 };
 
 export const downloadFile = async (req: AuthRequest, res: Response): Promise<void> => {

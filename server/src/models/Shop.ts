@@ -16,6 +16,8 @@ export interface IShop extends Document {
   services: string[];
   status: ShopStatus;
   pricing: IShopPricing;
+  agentSecretHash?: string;
+  agentSecretRotatedAt?: Date;
 }
 
 const pricingSchema = new Schema<IShopPricing>(
@@ -41,7 +43,9 @@ const shopSchema = new Schema<IShop>(
       enum: ["pending", "approved", "rejected"],
       default: "pending",
       index: true
-    }
+    },
+    agentSecretHash: { type: String, select: false },
+    agentSecretRotatedAt: { type: Date }
   },
   { timestamps: true }
 );

@@ -1,21 +1,18 @@
 import { NavLink, Outlet, Link } from "react-router-dom";
 import { useEffect } from "react";
-import { io, Socket } from "socket.io-client";
 import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
-
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
+import { useSocket } from "../context/SocketContext";
 
 const StudentLayout = () => {
   const { user, logout } = useAuth();
+  const { socket } = useSocket();
 
-  // Socket lives here so toast notifications fire on every student page
+  // Listen for targeted notifications sent specifically to this user's room
   useEffect(() => {
-    if (!user?.id) return;
-    const socket: Socket = io(SOCKET_URL);
-    socket.emit("join:user", user.id);
+    if (!socket) return;
 
-    socket.on("order:notification", (payload: { message: string; status: string }) => {
+    const handler = (payload: { message: string; status: string }) => {
       const { message: msg, status } = payload;
       if (status === "completed") {
         toast.success(msg, { duration: 8000, icon: "✅" });
@@ -28,10 +25,11 @@ const StudentLayout = () => {
       } else {
         toast(msg, { duration: 5000 });
       }
-    });
+    };
 
-    return () => { socket.disconnect(); };
-  }, [user?.id]);
+    socket.on("order:notification", handler);
+    return () => { socket.off("order:notification", handler); };
+  }, [socket]);
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     `flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${

@@ -28,6 +28,7 @@ export interface IOrder extends Document {
   priceBreakdown: IPriceBreakdownItem[];
   paymentStatus: PaymentStatus;
   status: OrderStatus;
+  priority: boolean;
 }
 
 const printRuleSchema = new Schema<PrintRule>(
@@ -82,7 +83,8 @@ const orderSchema = new Schema<IOrder>(
       enum: ["pending", "called", "printing", "skipped", "completed"],
       default: "pending",
       index: true
-    }
+    },
+    priority: { type: Boolean, default: false }
   },
   { timestamps: true }
 );

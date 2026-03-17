@@ -1,10 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { io, Socket } from "socket.io-client";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast, { Toaster } from "react-hot-toast";
-import { actionOrderApi, historyApi, queueApi, downloadFileApi } from "../api/orders";
+import { actionOrderApi, historyApi, queueApi, downloadFileApi, setPriorityApi } from "../api/orders";
 import { Order } from "../types";
-
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
+import { useSocket } from "../context/SocketContext";
 
 const ACTION_CONFIG = {
   call:     { label: "Call",     cls: "rounded-xl bg-sky-500 hover:bg-sky-400 text-white" },
@@ -30,6 +28,7 @@ const STATUS_BAR: Record<string, string> = {
 };
 
 const AdminDashboard = () => {
+  const { socket } = useSocket();
   const [queue, setQueue] = useState<Order[]>([]);
   const [history, setHistory] = useState<Order[]>([]);
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "called" | "printing" | "skipped" | "completed">("all");
@@ -54,16 +53,26 @@ const AdminDashboard = () => {
     setHistory(data.orders);
   };
 
+  // Keep a ref to the latest fetchHistory so the socket handler never captures stale filter state
+  const fetchHistoryRef = useRef<() => Promise<void>>(async () => {});
+  useEffect(() => { fetchHistoryRef.current = fetchHistory; });
+
+  // Initial data load
   useEffect(() => {
     void fetchQueue();
     void fetchHistory();
-    const socket: Socket = io(SOCKET_URL);
-    socket.on("queue:update", () => {
-      void fetchQueue();
-      void fetchHistory();
-    });
-    return () => { socket.disconnect(); };
   }, []);
+
+  // Re-subscribe whenever the shared socket instance changes
+  useEffect(() => {
+    if (!socket) return;
+    const handler = () => {
+      void fetchQueue();
+      void fetchHistoryRef.current();
+    };
+    socket.on("queue:update", handler);
+    return () => { socket.off("queue:update", handler); };
+  }, [socket]);
 
   useEffect(() => { void fetchHistory(); }, [statusFilter, colorFilter, fromDate, toDate, search]);
 
@@ -75,6 +84,16 @@ const AdminDashboard = () => {
       await fetchHistory();
     } catch {
       toast.error(`Failed to apply action: ${action}`);
+    }
+  };
+
+  const togglePriority = async (id: string, current: boolean) => {
+    try {
+      await setPriorityApi(id, !current);
+      toast.success(!current ? "⚡ Marked as urgent" : "Priority removed");
+      await fetchQueue();
+    } catch {
+      toast.error("Failed to update priority.");
     }
   };
 
@@ -213,11 +232,18 @@ const AdminDashboard = () => {
               {/* Mobile cards */}
               <div className="divide-y divide-slate-100 sm:hidden">
                 {queue.map((order) => (
-                  <div key={order._id} className="space-y-3 p-4">
+                  <div key={order._id} className={`space-y-3 p-4 ${order.priority ? "bg-orange-50" : ""}`}>
                     <div className="flex items-center justify-between">
-                      <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
-                        #{order.token}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {order.priority && (
+                          <span className="inline-flex items-center rounded-full border border-orange-300 bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-700">
+                            ⚡ Urgent
+                          </span>
+                        )}
+                        <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
+                          #{order.token}
+                        </span>
+                      </div>
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${STATUS_BADGE[order.status] ?? ""}`}>
                         {order.status}
                       </span>
@@ -239,6 +265,16 @@ const AdminDashboard = () => {
                           {ACTION_CONFIG[key].label}
                         </button>
                       ))}
+                      <button
+                        onClick={() => void togglePriority(order._id, order.priority ?? false)}
+                        className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                          order.priority
+                            ? "border-orange-300 bg-orange-100 text-orange-700 hover:bg-orange-200"
+                            : "border-slate-300 text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        {order.priority ? "Remove Priority" : "⚡ Urgent"}
+                      </button>
                       {!order.fileDeleted && (
                         <button onClick={() => void downloadFile(order._id)}
                           className="rounded-xl border border-sky-300 px-3 py-1.5 text-xs font-semibold text-sky-600 transition-colors hover:bg-sky-50">
@@ -266,11 +302,18 @@ const AdminDashboard = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {queue.map((order) => (
-                      <tr key={order._id} className="transition-colors hover:bg-slate-50">
+                      <tr key={order._id} className={`transition-colors hover:bg-slate-50 ${order.priority ? "bg-orange-50 hover:bg-orange-100" : ""}`}>
                         <td className="px-5 py-3.5">
-                          <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
-                            #{order.token}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {order.priority && (
+                              <span className="inline-flex items-center rounded-full border border-orange-300 bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold text-orange-700">
+                                ⚡
+                              </span>
+                            )}
+                            <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
+                              #{order.token}
+                            </span>
+                          </div>
                         </td>
                         <td className="px-5 py-3.5">
                           <p className="font-semibold text-slate-800">{order.student?.name || "N/A"}</p>
@@ -298,6 +341,16 @@ const AdminDashboard = () => {
                                 {ACTION_CONFIG[key].label}
                               </button>
                             ))}
+                            <button
+                              onClick={() => void togglePriority(order._id, order.priority ?? false)}
+                              className={`rounded-xl border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                                order.priority
+                                  ? "border-orange-300 bg-orange-100 text-orange-700 hover:bg-orange-200"
+                                  : "border-slate-300 text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              {order.priority ? "Remove Priority" : "⚡ Urgent"}
+                            </button>
                             {!order.fileDeleted && (
                               <button onClick={() => void downloadFile(order._id)}
                                 className="rounded-xl border border-sky-300 px-2.5 py-1 text-xs font-semibold text-sky-600 transition-colors hover:bg-sky-50">

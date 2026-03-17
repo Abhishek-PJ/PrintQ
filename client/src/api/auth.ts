@@ -11,6 +11,7 @@ export const registerApi = async (payload: {
   email: string;
   password: string;
   role: "student" | "admin";
+  mobile?: string;
 }): Promise<AuthResponse> => {
   const { data } = await api.post<AuthResponse>("/auth/register", payload);
   return data;

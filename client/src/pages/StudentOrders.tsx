@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { io, Socket } from "socket.io-client";
 import toast from "react-hot-toast";
 import { myOrdersApi, markPaidApi } from "../api/orders";
-import { useAuth } from "../context/AuthContext";
+import { useSocket } from "../context/SocketContext";
 import { Order } from "../types";
-
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
+import OrderDetailModal from "../components/OrderDetailModal";
 
 /* ── helpers ── */
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -44,11 +42,12 @@ const Spinner = () => (
 
 /* ── Order card ── */
 const OrderRow = ({
-  order, onPay, loadingPay,
+  order, onPay, loadingPay, onClick,
 }: {
   order: Order;
   onPay: (id: string) => void;
   loadingPay: string | null;
+  onClick: (order: Order) => void;
 }) => {
   const isActive = order.status !== "completed" && order.status !== "skipped";
   const canPay   = order.paymentStatus === "unpaid" && isActive;
@@ -57,7 +56,11 @@ const OrderRow = ({
 
   return (
     <div
-      className={`rounded-2xl border bg-white p-4 sm:p-5 transition-shadow hover:shadow-sm ${
+      role="button"
+      tabIndex={0}
+      onClick={() => onClick(order)}
+      onKeyDown={(e) => e.key === "Enter" && onClick(order)}
+      className={`cursor-pointer rounded-2xl border bg-white p-4 sm:p-5 transition-shadow hover:shadow-md hover:border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-300 ${
         isActive ? "border-slate-200 shadow-sm" : "border-slate-100"
       }`}
     >
@@ -133,7 +136,7 @@ const OrderRow = ({
         )}
         {canPay && (
           <button
-            onClick={() => onPay(order._id)}
+            onClick={(e) => { e.stopPropagation(); onPay(order._id); }}
             disabled={isPaying}
             className="ml-auto flex items-center gap-1.5 rounded-xl bg-green-600 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-green-500 disabled:opacity-60"
           >
@@ -153,10 +156,11 @@ const OrderRow = ({
 
 /* ── Page ── */
 const StudentOrders = () => {
-  const { user } = useAuth();
+  const { socket } = useSocket();
   const [orders, setOrders]         = useState<Order[]>([]);
   const [fetching, setFetching]     = useState(true);
   const [loadingPay, setLoadingPay] = useState<string | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   const fetchOrders = async () => {
     try {
@@ -167,13 +171,16 @@ const StudentOrders = () => {
     }
   };
 
+  // Initial fetch
+  useEffect(() => { void fetchOrders(); }, []);
+
+  // Refresh orders on any queue update broadcast
   useEffect(() => {
-    void fetchOrders();
-    const socket: Socket = io(SOCKET_URL);
-    if (user?.id) socket.emit("join:user", user.id);
-    socket.on("queue:update", () => { void fetchOrders(); });
-    return () => { socket.disconnect(); };
-  }, [user?.id]);
+    if (!socket) return;
+    const handler = () => { void fetchOrders(); };
+    socket.on("queue:update", handler);
+    return () => { socket.off("queue:update", handler); };
+  }, [socket]);
 
   const handleMarkPaid = async (orderId: string) => {
     setLoadingPay(orderId);
@@ -186,6 +193,15 @@ const StudentOrders = () => {
     } finally {
       setLoadingPay(null);
     }
+  };
+
+  const handleOrderUpdated = (updated: Order) => {
+    setOrders((prev) => prev.map((o) => (o._id === updated._id ? updated : o)));
+    if (selectedOrder?._id === updated._id) setSelectedOrder(updated);
+  };
+
+  const handleOrderDeleted = (id: string) => {
+    setOrders((prev) => prev.filter((o) => o._id !== id));
   };
 
   /* ── Loading ── */
@@ -253,7 +269,7 @@ const StudentOrders = () => {
           </div>
           <div className="space-y-3">
             {activeOrders.map((o) => (
-              <OrderRow key={o._id} order={o} onPay={handleMarkPaid} loadingPay={loadingPay} />
+              <OrderRow key={o._id} order={o} onPay={handleMarkPaid} loadingPay={loadingPay} onClick={setSelectedOrder} />
             ))}
           </div>
         </section>
@@ -268,12 +284,20 @@ const StudentOrders = () => {
           </div>
           <div className="space-y-3">
             {pastOrders.map((o) => (
-              <OrderRow key={o._id} order={o} onPay={handleMarkPaid} loadingPay={loadingPay} />
+              <OrderRow key={o._id} order={o} onPay={handleMarkPaid} loadingPay={loadingPay} onClick={setSelectedOrder} />
             ))}
           </div>
         </section>
       )}
 
+      {selectedOrder && (
+        <OrderDetailModal
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
+          onOrderUpdated={handleOrderUpdated}
+          onOrderDeleted={handleOrderDeleted}
+        />
+      )}
     </div>
   );
 };

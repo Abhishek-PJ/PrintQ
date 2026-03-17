@@ -5,15 +5,33 @@ import { AuthRequest } from "../types";
 import { signToken } from "../utils/jwt";
 
 export const register = async (req: Request, res: Response): Promise<void> => {
-  const { name, email, password, role } = req.body as {
+  const { name, email, password, role, mobile } = req.body as {
     name: string;
     email: string;
     password: string;
     role?: "student" | "admin";
+    mobile?: string;
   };
 
   if (!name || !email || !password) {
     res.status(400).json({ message: "name, email and password are required" });
+    return;
+  }
+
+  // Server-side format guards
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRe.test(email)) {
+    res.status(400).json({ message: "Invalid email address" });
+    return;
+  }
+
+  if (mobile && !/^[6-9]\d{9}$/.test(mobile)) {
+    res.status(400).json({ message: "Mobile must be a valid 10-digit Indian number" });
+    return;
+  }
+
+  if (password.length < 8) {
+    res.status(400).json({ message: "Password must be at least 8 characters" });
     return;
   }
 
@@ -26,10 +44,10 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   }
 
   const hashed = await bcrypt.hash(password, 10);
-  const user = await User.create({ name, email, password: hashed, role: sanitizedRole });
+  const user = await User.create({ name, email, password: hashed, role: sanitizedRole, mobile: mobile ?? null });
 
   const token = signToken({ userId: user._id.toString(), role: user.role });
-  res.status(201).json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+  res.status(201).json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, mobile: user.mobile } });
 };
 
 export const login = async (req: Request, res: Response): Promise<void> => {

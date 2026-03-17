@@ -17,5 +17,8 @@ export const env = {
   awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
   awsRegion: process.env.AWS_REGION || "us-east-1",
   awsS3Bucket: process.env.AWS_S3_BUCKET || "",
-  awsCloudfrontDomain: process.env.AWS_CLOUDFRONT_DOMAIN || ""
+  awsCloudfrontDomain: process.env.AWS_CLOUDFRONT_DOMAIN || "",
+  /** Shared secret between server and local print agents */
+  agentSecret: process.env.AGENT_SECRET || "change_me_agent_secret",
 };
+

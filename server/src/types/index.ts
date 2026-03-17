@@ -25,3 +25,28 @@ export interface AuthPayload {
 export interface AuthRequest extends Request {
   user?: AuthPayload;
 }
+
+/** Job payload dispatched from server → local print agent */
+export interface PrintJob {
+  orderId: string;
+  fileUrl: string;
+  fileName: string;
+  printOptions: {
+    printRules: PrintRule[];
+    copies: number;
+    paperSize: "A4" | "A3";
+    binding: "none" | "spiral" | "staple";
+  };
+  token: string;
+}
+
+export type PrintStep = "queued" | "downloading" | "converting" | "splitting" | "printing" | "done" | "error";
+
+/** Progress event forwarded from agent → server → admin UI */
+export interface PrintProgress {
+  orderId: string;
+  step: PrintStep;
+  current?: number;
+  total?: number;
+  message?: string;
+}

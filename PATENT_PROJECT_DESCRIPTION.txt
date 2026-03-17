@@ -1,0 +1,128 @@
+PrintQ — Intelligent Print Queue Management (Project Description for Patent Drafting)
+
+1) Technical Field
+PrintQ relates to networked document-printing and queue management systems, including real-time order/token assignment, remote print-job dispatch, and local execution of print jobs on shop computers.
+
+2) Background / Problem
+College print shops typically manage walk-in queues and print orders manually. Common problems include:
+- Lack of real-time visibility for students and shop owners.
+- Manual token generation and collision/duplication issues.
+- Errors in applying per-page print choices (color vs. B/W, single vs. duplex, per-range rules, copies).
+- Operational friction between cloud-based uploads and local printers (drivers, printer capabilities, OS-specific tooling).
+- Difficulty tracking print progress and updating customers in real time.
+
+3) Summary of the Solution
+PrintQ provides an end-to-end system for: (a) accepting document uploads from student devices, (b) assigning and tracking a live token/queue state in real time, (c) allowing shop admins to manage the queue and pricing, and (d) dispatching print jobs to a lightweight local Print Agent running on the shop’s computer that executes OS-level printing and reports progress back to the server.
+
+The system integrates a web client, an API server, a database, object storage for uploaded documents, real-time sockets for queue/progress updates, and a local agent for final print execution.
+
+4) System Components
+4.1 Client (Browser)
+- Single-page web application (React + TypeScript).
+- Student UI: shop selection, file upload (PDF/DOCX), print configuration (rules, page ranges, duplex, color), optional price preview, payment state, and token tracking.
+- Admin UI: live queue operations (call/print/skip/complete, priority), order history, analytics, and shop pricing management.
+- Super admin UI: shop approvals, user management, and global order visibility.
+
+4.2 Server (Backend)
+- REST API over HTTP for authentication, shop management, order creation, price preview, payment update, queue retrieval, and administrative actions.
+- WebSocket (Socket.IO) for pushing real-time updates to clients.
+- A dedicated agent namespace for dispatching print jobs to shop computers and receiving progress events.
+- Scheduled job(s) for housekeeping (e.g., hourly cleanup of old uploaded files).
+
+4.3 Data Layer
+- Database (MongoDB) storing users, shops, and orders.
+- Object storage (e.g., AWS S3) for uploaded documents.
+
+4.4 Local Print Agent (Shop Computer)
+- A Node.js application that connects to the server’s agent socket namespace.
+- Receives print-job payloads and performs:
+  (i) secure download of the uploaded file from a presigned URL,
+  (ii) conversion of DOCX to PDF (e.g., via LibreOffice headless),
+  (iii) rule-based PDF page extraction/splitting (per print rule and page range),
+  (iv) OS-specific printing (e.g., SumatraPDF on Windows, lp on Linux/macOS),
+  (v) progress reporting and final completion/error reporting.
+- Performs printer discovery and capability detection (e.g., color and duplex support) and reports these capabilities to the server.
+
+5) Roles and Access Model
+- Students: create and manage their own orders.
+- Admins (shop owners): manage shop registration/pricing and the queue for their shop.
+- Super admin: approves shops, administers users, and views global operational data.
+
+6) Key Data Objects (Conceptual)
+- User: identity, credentials, role.
+- Shop: owner, contact details, service list, approval status, and per-page pricing matrix.
+- Order: student, shop, token, document metadata, file storage key, print options (rules, copies, paper size, binding), price breakdown, payment status, and queue/print status.
+- PrintRule: page range + print mode parameters (color vs. B/W; single vs. duplex).
+
+7) Core Workflows
+7.1 Student Order Submission
+- Student authenticates and selects an approved shop.
+- Student uploads a PDF/DOCX and specifies print options.
+- Server stores file in object storage and creates an order record.
+- Server assigns a token to the order and places the order into a shop queue.
+- Admin UI is updated via real-time events.
+
+7.2 Queue Management (Admin)
+- Admin retrieves current queue entries (pending/called).
+- Admin performs queue actions: call, print, skip, complete, set priority.
+- Server updates order state and broadcasts queue updates.
+
+7.3 Print Dispatch and Execution
+- Upon a print action, the server generates a short-lived presigned URL for the order’s file.
+- Server emits a print-job event to the Print Agent associated with the shop.
+- Agent downloads and transforms the document as needed, splits PDF pages according to print rules, executes printing, and emits step-by-step progress events.
+- Server forwards progress to the admin’s browser session in real time.
+- On success, order state moves to completed; on failure, error state is recorded and surfaced.
+
+8) Differentiating / Potentially Novel Technical Aspects (Implementation-Facing)
+The following aspects may be useful to highlight during patent drafting as system-level or method-level features:
+
+A) Dual real-time communication channels with distinct authentication models
+- Browser namespace authenticated via user JWT for pushing queue and order status updates.
+- Agent namespace authenticated via a shared agent secret and shop identity for dispatching device-executed print jobs and receiving progress events.
+
+B) Local print execution with rule-based document transformation
+- Automatic orchestration of (download → optional DOCX conversion → rule-based PDF page extraction → OS printing) on the shop machine.
+- Separation of cloud storage and local printing through time-limited presigned URLs, reducing exposure of the underlying storage objects.
+
+C) Printer capability detection and feedback loop
+- Agent detects connected printers and capabilities (e.g., duplex/color support) and reports them to the server.
+- The reported capability set can be used to inform admin UI, reduce invalid configurations, and improve job success rates.
+
+D) Smart print-rule workflow
+- Support for multiple print rules, each specifying a page range and print mode.
+- Rules can be constructed such that the first rule auto-fills the full page range and subsequent rules continue from the last endpoint (user-experience-driven but also reduces misconfiguration).
+
+E) Token format, collision avoidance, and scheduled reset
+- Tokens use a constrained format (e.g., letter + numeric range) and are generated to avoid collisions with existing orders for the day.
+- Tokens reset on a schedule (e.g., daily midnight) to keep queue identifiers compact and predictable.
+
+F) Lifecycle management of uploaded files
+- Automatic deletion of uploads after a retention period (e.g., 24 hours after being skipped), with corresponding metadata updates in the order record.
+
+9) Example Method Claims (High-Level, Non-Legal Drafting Aid)
+Note: This section is a technical outline only and is not legal advice.
+
+Method 1 (Queue + Print Dispatch):
+- receiving, by a server, an uploaded document and print options from a client device;
+- storing the document in object storage and generating a document locator;
+- creating an order record and generating a queue token;
+- broadcasting queue state updates to at least one administrative client in real time;
+- upon a print initiation action, generating a time-limited access URL for the stored document;
+- transmitting a print job payload to a local agent associated with a shop;
+- receiving progress events from the agent and forwarding them to an administrative client in real time.
+
+Method 2 (Rule-Based Transformation and Printing on Agent):
+- downloading, by an agent, the document using the time-limited access URL;
+- converting the document to a print-ready format when the document is in a non-print-ready format (e.g., DOCX);
+- extracting, for each print rule, a corresponding page subset from a PDF;
+- invoking an OS-specific printing utility with parameters derived from the print rule (duplex/color/copies/paper);
+- reporting job state transitions and completion status to the server.
+
+10) Notes for Filing Preparation (What You May Want to Capture)
+- Whether capability detection affects allowed print-option choices automatically.
+- How errors are classified and recovered (retry behavior, partial success handling).
+- Security model: secret rotation for agents, shop binding, URL TTL and scope, and audit logs.
+- Scalability: multiple shops each with an agent; namespace isolation; per-shop rooms.
+
+End of document.

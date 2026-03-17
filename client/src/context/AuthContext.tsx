@@ -6,7 +6,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
-  register: (name: string, email: string, password: string, role: "student" | "admin") => Promise<AuthUser>;
+  register: (name: string, email: string, password: string, role: "student" | "admin", mobile?: string) => Promise<AuthUser>;
   logout: () => void;
 }
 
@@ -46,9 +46,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     name: string,
     email: string,
     password: string,
-    role: "student" | "admin"
+    role: "student" | "admin",
+    mobile?: string,
   ): Promise<AuthUser> => {
-    const data = await registerApi({ name, email, password, role });
+    const data = await registerApi({ name, email, password, role, mobile });
     localStorage.setItem("printq_token", data.token);
     setUser(data.user);
     return data.user;

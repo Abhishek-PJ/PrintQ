@@ -57,3 +57,26 @@ export const downloadFileApi = async (id: string): Promise<{ url: string }> => {
   const { data } = await api.get<{ url: string }>(`/orders/${id}/download`);
   return data;
 };
+
+export const getOrderQueueStatusApi = async (
+  id: string
+): Promise<{ inQueue: boolean; position: number; ordersAhead: number; estimatedMinutes: number; totalInQueue: number }> => {
+  const { data } = await api.get(`/orders/${id}/queue-status`);
+  return data;
+};
+
+export const editOrderApi = async (
+  id: string,
+  payload: { printRules?: PrintRule[]; copies?: number; paperSize?: "A4" | "A3"; binding?: "none" | "spiral" | "staple" }
+): Promise<{ order: Order }> => {
+  const { data } = await api.patch<{ order: Order }>(`/orders/${id}/edit`, payload);
+  return data;
+};
+
+export const deleteOrderApi = async (id: string): Promise<void> => {
+  await api.delete(`/orders/${id}`);
+};
+
+export const setPriorityApi = async (id: string, priority: boolean): Promise<void> => {
+  await api.patch(`/orders/${id}/priority`, { priority });
+};

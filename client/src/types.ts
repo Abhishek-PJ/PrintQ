@@ -36,6 +36,7 @@ export interface Order {
   totalPrice: number;
   priceBreakdown: PriceBreakdownItem[];
   paymentStatus: "unpaid" | "paid";
+  priority?: boolean;
   createdAt: string;
   updatedAt: string;
   student?: {

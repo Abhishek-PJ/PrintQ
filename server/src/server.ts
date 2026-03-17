@@ -3,7 +3,8 @@ import { Server } from "socket.io";
 import { app } from "./app";
 import { connectDB } from "./config/db";
 import { env } from "./config/env";
-import { setSocketServer } from "./sockets/io";
+import { setSocketServer, setupAgentNamespace } from "./sockets/io";
+import { verifyToken } from "./utils/jwt";
 
 const bootstrap = async (): Promise<void> => {
   await connectDB();
@@ -16,12 +17,30 @@ const bootstrap = async (): Promise<void> => {
     }
   });
 
+  // Authenticate each user socket connection using the JWT sent from the client
+  io.use((socket, next) => {
+    const token = socket.handshake.auth.token as string | undefined;
+    if (!token) return next(new Error("Authentication required"));
+    try {
+      const payload = verifyToken(token);
+      socket.data.userId = payload.userId;
+      next();
+    } catch {
+      next(new Error("Invalid token"));
+    }
+  });
+
   setSocketServer(io);
 
+  // Register the /agent namespace for local print agents
+  setupAgentNamespace(io, env.agentSecret);
+
   io.on("connection", (socket) => {
-    // Students join a personal room so the server can send targeted notifications
+    // Only allow a user to join their own notification room
     socket.on("join:user", (userId: string) => {
-      if (userId) void socket.join(`user:${userId}`);
+      if (userId && socket.data.userId === userId) {
+        void socket.join(`user:${userId}`);
+      }
     });
     socket.on("disconnect", () => undefined);
   });
@@ -37,3 +56,4 @@ bootstrap().catch((err: Error) => {
   console.error(err);
   process.exit(1);
 });
+
