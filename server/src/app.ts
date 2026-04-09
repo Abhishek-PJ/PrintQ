@@ -11,26 +11,30 @@ import { startCleanupJob } from "./jobs/cleanup";
 
 export const app = express();
 
-app.use(cors({
-  origin: function (origin, callback) {
+const normalizeOrigin = (value: string): string => value.replace(/\/$/, "");
+
+const allowedOrigins = new Set(
+  ["http://localhost:5173", ...env.clientUrl.split(",")]
+    .map((origin) => normalizeOrigin(origin.trim()))
+    .filter(Boolean)
+);
+
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
     if (!origin) return callback(null, true);
 
-    const allowed = [
-      "http://localhost:5173",
-      "https://printq.vercel.app/"
-    ];
-
-    const normalizedOrigin = origin.replace(/\/$/, ""); // remove trailing slash
-
-    if (allowed.includes(normalizedOrigin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
+    const normalizedOrigin = normalizeOrigin(origin);
+    if (allowedOrigins.has(normalizedOrigin)) {
+      return callback(null, true);
     }
+
+    return callback(new Error("Not allowed by CORS"));
   },
-  credentials: true
-}));
-app.options("*", cors());
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));

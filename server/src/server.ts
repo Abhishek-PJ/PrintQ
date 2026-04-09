@@ -6,13 +6,17 @@ import { env } from "./config/env";
 import { getAgentStatusForOwner, setSocketServer, setupAgentNamespace } from "./sockets/io";
 import { verifyToken } from "./utils/jwt";
 
+const socketAllowedOrigins = ["http://localhost:5173", ...env.clientUrl.split(",")]
+  .map((origin) => origin.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+
 const bootstrap = async (): Promise<void> => {
   await connectDB();
 
   const httpServer = http.createServer(app);
   const io = new Server(httpServer, {
     cors: {
-      origin: env.clientUrl,
+      origin: socketAllowedOrigins,
       methods: ["GET", "POST", "PATCH"]
     }
   });
