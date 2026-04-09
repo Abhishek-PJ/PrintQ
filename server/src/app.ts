@@ -17,7 +17,7 @@ app.use(cors({
 
     const allowed = [
       "http://localhost:5173",
-      "https://printq.vercel.app"
+      "https://printq.vercel.app/"
     ];
 
     const normalizedOrigin = origin.replace(/\/$/, ""); // remove trailing slash
