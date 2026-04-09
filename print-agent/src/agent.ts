@@ -5,7 +5,8 @@ import { processJob, purgeStaleFiles } from "./jobs/processJob";
 import { PrintJob, PrinterCapabilities } from "./types";
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const SERVER_URL   = process.env.SERVER_URL    || "http://localhost:5000";
+const rawServerUrl = process.env.SERVER_URL || "http://localhost:5000";
+const SERVER_URL = rawServerUrl.replace(/\/+$/, "");
 const AGENT_SECRET = process.env.AGENT_SECRET  || "";
 const SHOP_ID      = process.env.SHOP_ID       || "";
 
