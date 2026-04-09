@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { Shop } from "../models/Shop";
 import { AuthRequest } from "../types";
+import { generateAgentSecret, hashAgentSecret } from "../utils/agentSecret";
 
 export const registerShop = async (req: AuthRequest, res: Response): Promise<void> => {
   const existing = await Shop.findOne({ owner: req.user?.userId });
@@ -76,4 +77,28 @@ export const getApprovedShops = async (_req: AuthRequest, res: Response): Promis
     .sort({ name: 1 });
 
   res.json({ shops });
+};
+
+export const rotateMyAgentSecret = async (req: AuthRequest, res: Response): Promise<void> => {
+  const shop = await Shop.findOne({ owner: req.user?.userId });
+  if (!shop) {
+    res.status(404).json({ message: "Shop not found" });
+    return;
+  }
+
+  if (shop.status !== "approved") {
+    res.status(400).json({ message: "Shop must be approved before rotating agent secret" });
+    return;
+  }
+
+  const agentSecret = generateAgentSecret();
+  shop.agentSecretHash = await hashAgentSecret(agentSecret);
+  shop.agentSecretRotatedAt = new Date();
+  await shop.save();
+
+  res.json({
+    message: "Agent secret rotated",
+    shopId: String(shop._id),
+    agentSecret,
+  });
 };

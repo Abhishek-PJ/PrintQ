@@ -1,6 +1,12 @@
 import { api } from "./client";
 import { Shop, ShopPricing } from "../types";
 
+export interface RotateMyAgentSecretResponse {
+  message: string;
+  shopId: string;
+  agentSecret: string;
+}
+
 export const registerShopApi = async (payload: {
   name: string;
   address: string;
@@ -24,5 +30,10 @@ export const getApprovedShopsApi = async (): Promise<{ shops: Shop[] }> => {
 
 export const updateShopPricingApi = async (pricing: ShopPricing): Promise<{ message: string; pricing: ShopPricing }> => {
   const { data } = await api.patch<{ message: string; pricing: ShopPricing }>("/shops/pricing", pricing);
+  return data;
+};
+
+export const rotateMyAgentSecretApi = async (): Promise<RotateMyAgentSecretResponse> => {
+  const { data } = await api.patch<RotateMyAgentSecretResponse>("/shops/mine/agent-secret");
   return data;
 };

@@ -5,6 +5,7 @@ import {
   getAllUsers,
   setUserRole,
   updateShopStatus,
+  rotateShopAgentSecret,
   deleteUser,
   updateUser,
   deleteShop,
@@ -16,6 +17,7 @@ const router = Router();
 
 router.get("/shops", protect, authorize("superadmin"), getAllShops);
 router.patch("/shops/:id/status", protect, authorize("superadmin"), updateShopStatus);
+router.patch("/shops/:id/agent-secret", protect, authorize("superadmin"), rotateShopAgentSecret);
 router.patch("/shops/:id", protect, authorize("superadmin"), updateShop);
 router.delete("/shops/:id", protect, authorize("superadmin"), deleteShop);
 

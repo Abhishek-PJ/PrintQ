@@ -7,6 +7,8 @@ let io: Server | null = null;
 
 // shopId → connected agent socket
 const agentSockets = new Map<string, Socket>();
+// shopId → last reported printer names from agent
+const agentPrinters = new Map<string, string[]>();
 // shopId → shop owner userId (cached after first lookup)
 const shopOwnerCache = new Map<string, string>();
 
@@ -34,6 +36,27 @@ export const dispatchPrintJob = (shopId: string, job: PrintJob): boolean => {
   if (!agentSocket) return false;
   agentSocket.emit("print:job", job);
   return true;
+};
+
+/**
+ * Returns current aggregate agent status for a shop owner.
+ * If owner has multiple approved shops, online=true when any owned shop agent is connected.
+ */
+export const getAgentStatusForOwner = async (
+  ownerId: string,
+): Promise<{ online: boolean; printers: string[] }> => {
+  const shops = await Shop.find({ owner: ownerId, status: "approved" })
+    .select("_id")
+    .lean<Array<{ _id: unknown }>>();
+
+  for (const shop of shops) {
+    const shopId = String(shop._id);
+    if (agentSockets.has(shopId)) {
+      return { online: true, printers: agentPrinters.get(shopId) ?? [] };
+    }
+  }
+
+  return { online: false, printers: [] };
 };
 
 /**
@@ -90,8 +113,8 @@ export const setupAgentNamespace = (serverIo: Server): void => {
           const shop = await Shop.findById(shopId).select("owner").lean();
           if (!shop) return;
           ownerId = String(shop.owner);
-          shopOwnerCache.set(shopId, ownerId);
         }
+        shopOwnerCache.set(shopId, ownerId);
         socket.emit("agent:ack", { shopId });
         if (io) io.to(`user:${ownerId}`).emit("agent:status", { online: true, printers });
       } catch (err) {
@@ -100,6 +123,7 @@ export const setupAgentNamespace = (serverIo: Server): void => {
     };
 
     socket.on("agent:ready", ({ printers }: { printers: string[] }) => {
+      agentPrinters.set(shopId, printers ?? []);
       void notifyOwner(printers);
     });
 
@@ -117,6 +141,7 @@ export const setupAgentNamespace = (serverIo: Server): void => {
 
     socket.on("disconnect", () => {
       agentSockets.delete(shopId);
+      agentPrinters.delete(shopId);
       console.log(`[agent] disconnected for shop ${shopId}`);
       const ownerId = shopOwnerCache.get(shopId);
       if (ownerId && io) {

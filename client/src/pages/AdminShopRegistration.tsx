@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { registerShopApi, getMyShopApi, updateShopPricingApi } from "../api/shops";
+import { registerShopApi, getMyShopApi, rotateMyAgentSecretApi, updateShopPricingApi } from "../api/shops";
 import { Shop, ShopPricing } from "../types";
 
 const DEFAULT_PRICING: ShopPricing = { bwSingle: 2.0, bwDouble: 1.5, colorSingle: 5.0, colorDouble: 4.0 };
@@ -58,6 +58,9 @@ const AdminShopRegistration = () => {
   const [editPricing, setEditPricing]   = useState<ShopPricing>(DEFAULT_PRICING);
   const [pricingMsg, setPricingMsg]     = useState("");
   const [savingPricing, setSavingPricing] = useState(false);
+  const [agentSecret, setAgentSecret] = useState("");
+  const [rotatingSecret, setRotatingSecret] = useState(false);
+  const [secretMsg, setSecretMsg] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -135,6 +138,30 @@ const AdminShopRegistration = () => {
 
     const sc = STATUS_COLORS[shop.status] ?? STATUS_COLORS.pending;
 
+    const rotateMySecret = async () => {
+      setRotatingSecret(true);
+      setSecretMsg("");
+      try {
+        const data = await rotateMyAgentSecretApi();
+        setAgentSecret(data.agentSecret);
+        setSecretMsg("Agent secret rotated. Copy and paste it into your print-agent .env");
+      } catch {
+        setSecretMsg("Failed to rotate agent secret.");
+      } finally {
+        setRotatingSecret(false);
+      }
+    };
+
+    const copySecret = async () => {
+      if (!agentSecret) return;
+      try {
+        await navigator.clipboard.writeText(agentSecret);
+        setSecretMsg("Secret copied to clipboard.");
+      } catch {
+        setSecretMsg("Could not copy automatically. Please copy it manually.");
+      }
+    };
+
     return (
       <div className="mx-auto max-w-xl space-y-6 px-4 py-8">
 
@@ -201,6 +228,50 @@ const AdminShopRegistration = () => {
             </button>
           </form>
         </div>
+
+        {shop.status === "approved" && (
+          <div>
+            <h2 className="text-sm font-bold text-slate-800">Print Agent Secret</h2>
+            <p className="mt-0.5 mb-4 text-xs text-slate-400">Rotate when onboarding a new agent device or after suspected credential leak.</p>
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+              <button
+                type="button"
+                onClick={() => void rotateMySecret()}
+                disabled={rotatingSecret}
+                className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-amber-500 disabled:opacity-60"
+              >
+                {rotatingSecret ? "Rotating..." : "Rotate Agent Secret"}
+              </button>
+
+              {agentSecret && (
+                <div className="space-y-2">
+                  <input
+                    readOnly
+                    value={agentSecret}
+                    className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs text-slate-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void copySecret()}
+                    className="rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                  >
+                    Copy Secret
+                  </button>
+                </div>
+              )}
+
+              {secretMsg && (
+                <p className={`text-xs font-medium ${secretMsg.toLowerCase().includes("failed") ? "text-red-500" : "text-amber-700"}`}>
+                  {secretMsg}
+                </p>
+              )}
+
+              <p className="text-[11px] text-amber-700">
+                This secret is shown once. Save it as AGENT_SECRET in your print-agent .env with your SHOP_ID.
+              </p>
+            </div>
+          </div>
+        )}
 
       </div>
     );

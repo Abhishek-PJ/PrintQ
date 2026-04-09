@@ -3,6 +3,7 @@ import { Shop } from "../models/Shop";
 import { User } from "../models/User";
 import { IOrder } from "../models/Order";
 import { AuthRequest, ShopStatus } from "../types";
+import { generateAgentSecret, hashAgentSecret } from "../utils/agentSecret";
 
 export const getAllShops = async (_req: AuthRequest, res: Response): Promise<void> => {
   const shops = await Shop.find()
@@ -21,13 +22,57 @@ export const updateShopStatus = async (req: AuthRequest, res: Response): Promise
     return;
   }
 
-  const shop = await Shop.findByIdAndUpdate(id, { status }, { new: true }).populate("owner", "name email");
+  const shop = await Shop.findById(id);
   if (!shop) {
     res.status(404).json({ message: "Shop not found" });
     return;
   }
 
-  res.json({ message: `Shop ${status}`, shop });
+  let generatedAgentSecret: string | undefined;
+  const isBecomingApproved = status === "approved" && shop.status !== "approved";
+  const needsAgentSecret = !shop.agentSecretHash;
+
+  if (isBecomingApproved && needsAgentSecret) {
+    generatedAgentSecret = generateAgentSecret();
+    shop.agentSecretHash = await hashAgentSecret(generatedAgentSecret);
+    shop.agentSecretRotatedAt = new Date();
+  }
+
+  shop.status = status;
+  await shop.save();
+  await shop.populate("owner", "name email");
+
+  res.json({
+    message: `Shop ${status}`,
+    shop,
+    ...(generatedAgentSecret ? { agentSecret: generatedAgentSecret } : {}),
+  });
+};
+
+export const rotateShopAgentSecret = async (req: AuthRequest, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const shop = await Shop.findById(id);
+
+  if (!shop) {
+    res.status(404).json({ message: "Shop not found" });
+    return;
+  }
+
+  if (shop.status !== "approved") {
+    res.status(400).json({ message: "Shop must be approved before rotating agent secret" });
+    return;
+  }
+
+  const agentSecret = generateAgentSecret();
+  shop.agentSecretHash = await hashAgentSecret(agentSecret);
+  shop.agentSecretRotatedAt = new Date();
+  await shop.save();
+
+  res.json({
+    message: "Agent secret rotated",
+    shopId: String(shop._id),
+    agentSecret,
+  });
 };
 
 export const getAllUsers = async (_req: AuthRequest, res: Response): Promise<void> => {

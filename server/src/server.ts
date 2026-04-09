@@ -3,7 +3,7 @@ import { Server } from "socket.io";
 import { app } from "./app";
 import { connectDB } from "./config/db";
 import { env } from "./config/env";
-import { setSocketServer, setupAgentNamespace } from "./sockets/io";
+import { getAgentStatusForOwner, setSocketServer, setupAgentNamespace } from "./sockets/io";
 import { verifyToken } from "./utils/jwt";
 
 const bootstrap = async (): Promise<void> => {
@@ -33,13 +33,17 @@ const bootstrap = async (): Promise<void> => {
   setSocketServer(io);
 
   // Register the /agent namespace for local print agents
-  setupAgentNamespace(io, env.agentSecret);
+  setupAgentNamespace(io);
 
   io.on("connection", (socket) => {
     // Only allow a user to join their own notification room
     socket.on("join:user", (userId: string) => {
       if (userId && socket.data.userId === userId) {
         void socket.join(`user:${userId}`);
+        void (async () => {
+          const status = await getAgentStatusForOwner(userId);
+          socket.emit("agent:status", status);
+        })();
       }
     });
     socket.on("disconnect", () => undefined);

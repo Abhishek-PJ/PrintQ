@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   saGetAllShopsApi,
   saUpdateShopStatusApi,
+  saRotateShopAgentSecretApi,
   saUpdateShopApi,
   saDeleteShopApi,
   saGetAllUsersApi,
@@ -15,6 +16,7 @@ import { Shop, UserInfo, Order, UserRole } from "../types";
 type Tab = "shops" | "users" | "orders";
 type EditUserState = { _id: string; name: string; email: string } | null;
 type EditShopState = { _id: string; name: string; address: string; phone: string; services: string } | null;
+type OneTimeSecretState = { shopName: string; shopId: string; secret: string; source: "approve" | "rotate" } | null;
 
 /* ── shared styles ── */
 const inputCls =
@@ -41,6 +43,7 @@ const SuperAdminDashboard = () => {
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [message, setMessage] = useState("");
+  const [oneTimeSecret, setOneTimeSecret] = useState<OneTimeSecretState>(null);
 
   const [editingUser, setEditingUser] = useState<EditUserState>(null);
   const [editingShop, setEditingShop] = useState<EditShopState>(null);
@@ -56,8 +59,51 @@ const SuperAdminDashboard = () => {
   }, []);
 
   const handleShopStatus = async (id: string, status: "approved" | "rejected") => {
-    try { await saUpdateShopStatusApi(id, status); setMessage(`Shop ${status}.`); await fetchShops(); }
+    try {
+      const resp = await saUpdateShopStatusApi(id, status);
+      const approvedShopName = shops.find((s) => s._id === id)?.name ?? "shop";
+      setMessage(`Shop ${status}.`);
+      if (status === "approved" && resp.agentSecret) {
+        setOneTimeSecret({
+          shopName: approvedShopName,
+          shopId: id,
+          secret: resp.agentSecret,
+          source: "approve",
+        });
+      }
+      await fetchShops();
+    }
     catch { setMessage("Failed to update shop status."); }
+  };
+
+  const handleRotateShopSecret = async (id: string) => {
+    try {
+      const resp = await saRotateShopAgentSecretApi(id);
+      const selectedShopName = shops.find((s) => s._id === id)?.name ?? "shop";
+      if (!resp.agentSecret) {
+        setMessage("Secret rotated, but no secret value was returned.");
+        return;
+      }
+      setOneTimeSecret({
+        shopName: selectedShopName,
+        shopId: id,
+        secret: resp.agentSecret,
+        source: "rotate",
+      });
+      setMessage("Shop agent secret rotated.");
+    } catch {
+      setMessage("Failed to rotate shop agent secret.");
+    }
+  };
+
+  const copySecret = async () => {
+    if (!oneTimeSecret) return;
+    try {
+      await navigator.clipboard.writeText(oneTimeSecret.secret);
+      setMessage("Secret copied to clipboard.");
+    } catch {
+      setMessage("Could not copy secret automatically. Please copy it manually.");
+    }
   };
 
   const handleSetRole = async (id: string, role: UserRole) => {
@@ -117,6 +163,41 @@ const SuperAdminDashboard = () => {
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700">
               {message}
               <button onClick={() => setMessage("")} className="ml-3 text-slate-400 hover:text-slate-600">&times;</button>
+            </div>
+          )}
+
+          {oneTimeSecret && (
+            <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-slate-700">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-amber-800">
+                  One-time agent secret ({oneTimeSecret.source === "approve" ? "generated on approval" : "rotated"})
+                </p>
+                <button
+                  onClick={() => setOneTimeSecret(null)}
+                  className="rounded-lg border border-amber-200 bg-white px-2.5 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                >
+                  Dismiss
+                </button>
+              </div>
+              <p className="text-xs text-amber-700">
+                Shop: <span className="font-semibold">{oneTimeSecret.shopName}</span> ({oneTimeSecret.shopId})
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  readOnly
+                  value={oneTimeSecret.secret}
+                  className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs text-slate-700"
+                />
+                <button
+                  onClick={() => void copySecret()}
+                  className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-500"
+                >
+                  Copy Secret
+                </button>
+              </div>
+              <p className="text-[11px] text-amber-700">
+                This value is shown once. Save it in that shop&rsquo;s print-agent .env as AGENT_SECRET.
+              </p>
             </div>
           )}
 
@@ -182,6 +263,10 @@ const SuperAdminDashboard = () => {
                                   className="rounded-xl bg-red-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-400">Reject</button>
                               </>
                             )}
+                            {shop.status === "approved" && (
+                              <button onClick={() => void handleRotateShopSecret(shop._id)}
+                                className="rounded-xl border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50">Rotate Secret</button>
+                            )}
                             <button onClick={() => setEditingShop({ _id: shop._id, name: shop.name, address: shop.address, phone: shop.phone, services: shop.services.join(", ") })}
                               className="rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Edit</button>
                             <button onClick={() => void handleDeleteShop(shop._id, shop.name)}
@@ -240,6 +325,10 @@ const SuperAdminDashboard = () => {
                                       <button onClick={() => void handleShopStatus(shop._id, "rejected")}
                                         className="rounded-xl bg-red-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-400">Reject</button>
                                     </>
+                                  )}
+                                  {shop.status === "approved" && (
+                                    <button onClick={() => void handleRotateShopSecret(shop._id)}
+                                      className="rounded-xl border border-amber-300 px-2.5 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50">Rotate Secret</button>
                                   )}
                                   <button onClick={() => setEditingShop({ _id: shop._id, name: shop.name, address: shop.address, phone: shop.phone, services: shop.services.join(", ") })}
                                     className="rounded-xl border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">Edit</button>

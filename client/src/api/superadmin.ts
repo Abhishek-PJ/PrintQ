@@ -1,6 +1,13 @@
 import { api } from "./client";
 import { Order, Shop, UserInfo } from "../types";
 
+export interface AgentSecretResponse {
+  message: string;
+  shopId?: string;
+  agentSecret?: string;
+  shop?: Shop;
+}
+
 export const saGetAllShopsApi = async (): Promise<{ shops: Shop[] }> => {
   const { data } = await api.get<{ shops: Shop[] }>("/superadmin/shops");
   return data;
@@ -9,8 +16,13 @@ export const saGetAllShopsApi = async (): Promise<{ shops: Shop[] }> => {
 export const saUpdateShopStatusApi = async (
   id: string,
   status: "approved" | "rejected"
-) => {
-  const { data } = await api.patch(`/superadmin/shops/${id}/status`, { status });
+) : Promise<AgentSecretResponse> => {
+  const { data } = await api.patch<AgentSecretResponse>(`/superadmin/shops/${id}/status`, { status });
+  return data;
+};
+
+export const saRotateShopAgentSecretApi = async (id: string): Promise<AgentSecretResponse> => {
+  const { data } = await api.patch<AgentSecretResponse>(`/superadmin/shops/${id}/agent-secret`);
   return data;
 };
 
