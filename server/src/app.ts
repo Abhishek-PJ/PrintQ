@@ -12,10 +12,22 @@ import { startCleanupJob } from "./jobs/cleanup";
 export const app = express();
 
 app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://printq.vercel.app"
-  ],
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+
+    const allowed = [
+      "http://localhost:5173",
+      "https://printq.vercel.app"
+    ];
+
+    const normalizedOrigin = origin.replace(/\/$/, ""); // remove trailing slash
+
+    if (allowed.includes(normalizedOrigin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true
 }));
 app.options("*", cors());
