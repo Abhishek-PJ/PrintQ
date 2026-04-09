@@ -12,9 +12,13 @@ import { startCleanupJob } from "./jobs/cleanup";
 export const app = express();
 
 app.use(cors({
-  origin: ["http://localhost:5173", "https://printq.vercel.app/"],
+  origin: [
+    "http://localhost:5173",
+    "https://printq.vercel.app"
+  ],
   credentials: true
 }));
+app.options("*", cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
