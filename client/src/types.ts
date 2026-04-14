@@ -43,6 +43,8 @@ export interface Order {
   student?: {
     name: string;
     email: string;
+    mobile?: string;
+    phone?: string;
   };
   shop?: {
     _id: string;

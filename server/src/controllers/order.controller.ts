@@ -151,7 +151,7 @@ export const getQueue = async (req: AuthRequest, res: Response): Promise<void> =
   }
 
   const queue = await IOrder.find({ shop: shop._id, status: { $nin: ["completed", "skipped"] } })
-    .populate("student", "name email")
+    .populate("student", "name email mobile phone")
     .sort({ priority: -1, createdAt: 1 });
 
   res.json({ queue });
@@ -194,7 +194,7 @@ export const getOrderHistory = async (req: AuthRequest, res: Response): Promise<
   }
 
   const orders = await IOrder.find(query)
-    .populate("student", "name email")
+    .populate("student", "name email mobile phone")
     .sort({ createdAt: -1 })
     .limit(300);
 

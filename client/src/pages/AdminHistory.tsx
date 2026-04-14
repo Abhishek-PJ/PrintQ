@@ -156,7 +156,11 @@ const AdminHistory = () => {
                           #{order.token}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 text-slate-700">{order.student?.name || "N/A"}</td>
+                      <td className="px-5 py-3.5">
+                        <p className="font-medium text-slate-700">{order.student?.name || "N/A"}</p>
+                        <p className="text-xs text-slate-400">{order.student?.email || "—"}</p>
+                        <p className="text-xs text-slate-400">{order.student?.mobile || order.student?.phone || "—"}</p>
+                      </td>
                       <td className="max-w-[150px] px-5 py-3.5">
                         <p className="truncate text-slate-700">{order.originalFileName}</p>
                         <p className="mt-0.5 text-xs text-slate-400">{order.printOptions.paperSize}</p>

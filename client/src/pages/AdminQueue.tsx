@@ -327,9 +327,9 @@ const AdminQueue = () => {
 
                   <div>
                     <p className="truncate text-sm font-semibold text-slate-800">{order.originalFileName}</p>
-                    <p className="mt-0.5 text-xs text-slate-400">
-                      {order.student?.name || "N/A"} &middot; {order.student?.email || ""}
-                    </p>
+                    <p className="mt-0.5 text-xs text-slate-400">{order.student?.name || "N/A"}</p>
+                    <p className="text-xs text-slate-400">{order.student?.email || "—"}</p>
+                    <p className="text-xs text-slate-400">{order.student?.mobile || order.student?.phone || "—"}</p>
                   </div>
 
                   <div className="flex items-center gap-2 text-xs">
@@ -418,7 +418,8 @@ const AdminQueue = () => {
                       </td>
                       <td className="px-5 py-3.5">
                         <p className="font-semibold text-slate-800">{order.student?.name || "N/A"}</p>
-                        <p className="text-xs text-slate-400">{order.student?.email || ""}</p>
+                        <p className="text-xs text-slate-400">{order.student?.email || "—"}</p>
+                        <p className="text-xs text-slate-400">{order.student?.mobile || order.student?.phone || "—"}</p>
                       </td>
                       <td className="max-w-[160px] px-5 py-3.5">
                         <p className="truncate text-slate-700">{order.originalFileName}</p>

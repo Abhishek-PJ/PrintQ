@@ -250,7 +250,9 @@ const AdminDashboard = () => {
                     </div>
                     <div>
                       <p className="truncate text-sm font-semibold text-slate-800">{order.originalFileName}</p>
-                      <p className="mt-0.5 text-xs text-slate-400">{order.student?.name || "N/A"} &middot; {order.student?.email || ""}</p>
+                      <p className="mt-0.5 text-xs text-slate-400">{order.student?.name || "N/A"}</p>
+                      <p className="text-xs text-slate-400">{order.student?.email || "—"}</p>
+                      <p className="text-xs text-slate-400">{order.student?.mobile || order.student?.phone || "—"}</p>
                     </div>
                     <div className="flex items-center gap-2 text-xs">
                       <span className="font-bold text-slate-800">&#8377;{order.totalPrice?.toFixed(2) ?? "0.00"}</span>
@@ -317,7 +319,8 @@ const AdminDashboard = () => {
                         </td>
                         <td className="px-5 py-3.5">
                           <p className="font-semibold text-slate-800">{order.student?.name || "N/A"}</p>
-                          <p className="text-xs text-slate-400">{order.student?.email || ""}</p>
+                          <p className="text-xs text-slate-400">{order.student?.email || "—"}</p>
+                          <p className="text-xs text-slate-400">{order.student?.mobile || order.student?.phone || "—"}</p>
                         </td>
                         <td className="max-w-[160px] px-5 py-3.5">
                           <p className="truncate text-slate-700">{order.originalFileName}</p>
@@ -440,7 +443,11 @@ const AdminDashboard = () => {
                           #{order.token}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 text-slate-700">{order.student?.name || "N/A"}</td>
+                      <td className="px-5 py-3.5">
+                        <p className="font-medium text-slate-700">{order.student?.name || "N/A"}</p>
+                        <p className="text-xs text-slate-400">{order.student?.email || "—"}</p>
+                        <p className="text-xs text-slate-400">{order.student?.mobile || order.student?.phone || "—"}</p>
+                      </td>
                       <td className="max-w-[150px] px-5 py-3.5">
                         <p className="truncate text-slate-700">{order.originalFileName}</p>
                       </td>
