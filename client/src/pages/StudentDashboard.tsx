@@ -134,6 +134,110 @@ const PdfPreviewModal = ({ file, onClose }: { file: File; onClose: () => void })
   );
 };
 
+const RulePreviewModal = ({
+  file,
+  rule,
+  onClose,
+}: {
+  file: File;
+  rule: PrintRule;
+  onClose: () => void;
+}) => {
+  const [pageUrls, setPageUrls] = useState<string[]>([]);
+  const [rendered, setRendered] = useState(0);
+  const [totalInRange, setTotalInRange] = useState(0);
+  const cancelled = useRef(false);
+
+  useEffect(() => {
+    cancelled.current = false;
+    const run = async () => {
+      try {
+        const buffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+        const from = Math.max(1, Math.min(rule.fromPage, pdf.numPages));
+        const to = Math.max(from, Math.min(rule.toPage, pdf.numPages));
+        setTotalInRange(to - from + 1);
+
+        const urls: string[] = [];
+        for (let p = from; p <= to; p++) {
+          if (cancelled.current) return;
+          const page = await pdf.getPage(p);
+          // Higher scale for clearer text/details in rule preview.
+          const viewport = page.getViewport({ scale: 1.35 });
+          const canvas = document.createElement("canvas");
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          await page.render({ canvasContext: canvas.getContext("2d")!, viewport, canvas }).promise;
+          urls.push(canvas.toDataURL("image/png"));
+          setRendered(urls.length);
+          setPageUrls([...urls]);
+        }
+      } catch {
+        if (!cancelled.current) {
+          setPageUrls([]);
+          setRendered(0);
+          setTotalInRange(0);
+        }
+      }
+    };
+    void run();
+    return () => { cancelled.current = true; };
+  }, [file, rule.fromPage, rule.toPage]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-6"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="relative flex h-[92vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-2xl">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-5 py-3.5">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-slate-800">
+              Rule Preview: pp{rule.fromPage}–{rule.toPage}
+            </p>
+            <p className="text-xs text-slate-400">
+              {totalInRange > 0
+                ? rendered < totalInRange
+                  ? `Rendering ${rendered} / ${totalInRange} pages…`
+                  : `${totalInRange} page${totalInRange !== 1 ? "s" : ""} • ${rule.colorMode === "bw" ? "B&W" : "Color"} • ${rule.sided === "single" ? "Single" : "Double"}`
+                : "Loading…"}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="shrink-0 rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto bg-slate-100 p-3 space-y-3">
+          {pageUrls.length === 0 ? (
+            <div className="flex items-center justify-center py-24 text-slate-400">
+              <svg className="mr-2 h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              Rendering pages…
+            </div>
+          ) : (
+            pageUrls.map((url, i) => (
+              <div key={i} className="relative">
+                <span className="absolute left-2 top-2 rounded bg-black/50 px-2 py-0.5 text-xs font-medium text-white">
+                  {rule.fromPage + i}
+                </span>
+                <img src={url} alt={`Page ${rule.fromPage + i}`} className="w-full rounded-lg shadow" />
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const emptyRule = (): PrintRule => ({
   fromPage: 1,
   toPage: 1,
@@ -156,6 +260,7 @@ const StudentDashboard = () => {
   const [step, setStep] = useState<Step>(1);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pageDrafts, setPageDrafts] = useState<Record<string, string>>({});
+  const [activeRulePreviewIndex, setActiveRulePreviewIndex] = useState<number | null>(null);
 
   // Print rules
   const [printRules, setPrintRules] = useState<PrintRule[]>([emptyRule()]);
@@ -302,6 +407,11 @@ const StudentDashboard = () => {
   const removeRule = (idx: number) => {
     if (printRules.length <= 1) return;
     setPrintRules((prev) => prev.filter((_, i) => i !== idx));
+    setActiveRulePreviewIndex((prev) => {
+      if (prev === null) return prev;
+      if (prev === idx) return null;
+      return prev > idx ? prev - 1 : prev;
+    });
   };
 
   const goToStep2 = () => {
@@ -399,6 +509,10 @@ const StudentDashboard = () => {
     </div>
   );
 
+  const effectiveRulesForPreview = getEffectiveRules();
+  const activeRuleForPreview =
+    activeRulePreviewIndex !== null ? effectiveRulesForPreview[activeRulePreviewIndex] ?? null : null;
+
  
 
   return (
@@ -406,6 +520,13 @@ const StudentDashboard = () => {
       {/* PDF Preview Modal */}
       {previewOpen && file && file.type === "application/pdf" && (
         <PdfPreviewModal file={file} onClose={() => setPreviewOpen(false)} />
+      )}
+      {file?.type === "application/pdf" && activeRuleForPreview && (
+        <RulePreviewModal
+          file={file}
+          rule={activeRuleForPreview}
+          onClose={() => setActiveRulePreviewIndex(null)}
+        />
       )}
 
       {/* ── Success state ── */}
@@ -562,6 +683,7 @@ const StudentDashboard = () => {
                       const picked = e.target.files?.[0] || null;
                       setFile(picked);
                       setTotalPages(null);
+                      setActiveRulePreviewIndex(null);
                       if (!picked) return;
                       if (picked.type === "application/pdf") {
                         setPageCountLoading(true);
@@ -595,23 +717,24 @@ const StudentDashboard = () => {
 
           {/* ── Step 2: Configure ── */}
           {step === 2 && (
-            <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-5">
-
-              {/* File pill */}
-              {file && (
-                <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5">
-                  <span className="shrink-0 rounded-lg bg-violet-100 px-2 py-0.5 font-mono text-[10px] font-bold uppercase text-violet-700">
-                    {file.name.split(".").pop()?.toLowerCase()}
-                  </span>
-                  <span className="min-w-0 truncate text-sm font-medium text-slate-700">{file.name}</span>
-                  {totalPages !== null && (
-                    <span className="ml-auto shrink-0 text-xs font-semibold text-violet-600">{totalPages}pp</span>
+            <form onSubmit={handleSubmit} className="p-5 sm:p-6">
+              <div className="grid gap-5">
+                <div className="space-y-5">
+                  {/* File pill */}
+                  {file && (
+                    <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5">
+                      <span className="shrink-0 rounded-lg bg-violet-100 px-2 py-0.5 font-mono text-[10px] font-bold uppercase text-violet-700">
+                        {file.name.split(".").pop()?.toLowerCase()}
+                      </span>
+                      <span className="min-w-0 truncate text-sm font-medium text-slate-700">{file.name}</span>
+                      {totalPages !== null && (
+                        <span className="ml-auto shrink-0 text-xs font-semibold text-violet-600">{totalPages}pp</span>
+                      )}
+                    </div>
                   )}
-                </div>
-              )}
 
-              {/* Print Rules */}
-              <div>
+                  {/* Print Rules */}
+                  <div>
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Print Rules</h3>
                   {totalPages !== null && (
@@ -631,16 +754,31 @@ const StudentDashboard = () => {
                           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-100 text-[10px] font-bold text-violet-700">
                             {idx + 1}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => removeRule(idx)}
-                            disabled={printRules.length <= 1}
-                            className="rounded-lg p-1 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-400 disabled:pointer-events-none disabled:opacity-0"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-                            </svg>
-                          </button>
+                          <div className="flex items-center gap-1">
+                            {file?.type === "application/pdf" && (
+                              <button
+                                type="button"
+                                onClick={() => setActiveRulePreviewIndex(idx)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700 transition-colors hover:bg-violet-100"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                  <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                                Preview
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeRule(idx)}
+                              disabled={printRules.length <= 1}
+                              className="rounded-lg p-1 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-400 disabled:pointer-events-none disabled:opacity-0"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                              </svg>
+                            </button>
+                          </div>
                         </div>
 
                         {/* Page range */}
@@ -742,10 +880,10 @@ const StudentDashboard = () => {
                   </svg>
                   Add Another Rule
                 </button>
-              </div>
+                  </div>
 
-              {/* Copies + Binding */}
-              <div>
+                  {/* Copies + Binding */}
+                  <div>
                 <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Options</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -771,61 +909,64 @@ const StudentDashboard = () => {
                     </select>
                   </div>
                 </div>
-              </div>
+                  </div>
 
-              {/* Price Breakdown */}
-              {breakdown.length > 0 && (
-                <div className="rounded-xl border border-violet-100 bg-violet-50 p-4">
-                  <h3 className="text-xs font-bold uppercase tracking-wide text-violet-600">Price Breakdown</h3>
-                  <ul className="mt-2 space-y-1.5">
-                    {breakdown.map((item, i) => (
-                      <li key={i} className="flex justify-between text-sm">
-                        <span className="text-slate-500">{item.label}</span>
-                        <span className="font-semibold text-slate-700">₹{item.amount.toFixed(2)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="mt-3 flex justify-between border-t border-violet-200 pt-3">
-                    <span className="font-bold text-slate-800">Total</span>
-                    <span className="text-lg font-extrabold text-violet-700">₹{total.toFixed(2)}</span>
+                  {/* Price Breakdown */}
+                  {breakdown.length > 0 && (
+                    <div className="rounded-xl border border-violet-100 bg-violet-50 p-4">
+                      <h3 className="text-xs font-bold uppercase tracking-wide text-violet-600">Price Breakdown</h3>
+                      <ul className="mt-2 space-y-1.5">
+                        {breakdown.map((item, i) => (
+                          <li key={i} className="flex justify-between text-sm">
+                            <span className="text-slate-500">{item.label}</span>
+                            <span className="font-semibold text-slate-700">₹{item.amount.toFixed(2)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="mt-3 flex justify-between border-t border-violet-200 pt-3">
+                        <span className="font-bold text-slate-800">Total</span>
+                        <span className="text-lg font-extrabold text-violet-700">₹{total.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pay toggle */}
+                  <label className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition-colors ${payOnline ? "border-green-300 bg-green-50" : "border-slate-200 hover:border-slate-300"}`}>
+                    <input
+                      type="checkbox"
+                      checked={payOnline}
+                      onChange={() => setPayOnline(!payOnline)}
+                      className="mt-0.5 h-4 w-4 accent-green-600"
+                    />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">Pay online now</p>
+                      <p className="mt-0.5 text-xs text-slate-400">No payment needed at the shop — just pick up your order.</p>
+                    </div>
+                  </label>
+
+                  {message && (
+                    <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">{message}</p>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                    >
+                      ← Back
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="flex-1 rounded-xl bg-violet-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-60"
+                    >
+                      {loading ? "Submitting…" : "Confirm Order"}
+                    </button>
                   </div>
                 </div>
-              )}
 
-              {/* Pay toggle */}
-              <label className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition-colors ${payOnline ? "border-green-300 bg-green-50" : "border-slate-200 hover:border-slate-300"}`}>
-                <input
-                  type="checkbox"
-                  checked={payOnline}
-                  onChange={() => setPayOnline(!payOnline)}
-                  className="mt-0.5 h-4 w-4 accent-green-600"
-                />
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">Pay online now</p>
-                  <p className="mt-0.5 text-xs text-slate-400">No payment needed at the shop — just pick up your order.</p>
-                </div>
-              </label>
-
-              {message && (
-                <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">{message}</p>
-              )}
-
-              {/* Actions */}
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
-                >
-                  ← Back
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 rounded-xl bg-violet-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-60"
-                >
-                  {loading ? "Submitting…" : "Confirm Order"}
-                </button>
               </div>
             </form>
           )}
