@@ -60,6 +60,16 @@ const progress = (socket: Socket, data: PrintProgress) => {
   );
 };
 
+const toFriendlyPdfLoadError = (err: unknown): Error => {
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/PDFDocument\.load.*encrypted|input document.*encrypted/i.test(raw)) {
+    return new Error(
+      "This PDF is encrypted or password-protected and cannot be auto-printed. Please upload an unlocked PDF."
+    );
+  }
+  return err instanceof Error ? err : new Error(raw);
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
@@ -139,7 +149,12 @@ const runJob = async (
   }
 
   // ── 3. Validate rules against actual page count ─────────────────────────────
-  const srcDoc    = await PDFDocument.load(fs.readFileSync(pdfPath));
+  let srcDoc: PDFDocument;
+  try {
+    srcDoc = await PDFDocument.load(fs.readFileSync(pdfPath));
+  } catch (err) {
+    throw toFriendlyPdfLoadError(err);
+  }
   const totalPages = srcDoc.getPageCount();
   const validErr  = validateRules(job, totalPages);
   if (validErr) throw new Error(`Validation failed: ${validErr}`);

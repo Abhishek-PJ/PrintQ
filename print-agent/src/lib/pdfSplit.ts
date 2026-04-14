@@ -15,7 +15,18 @@ export const extractPages = async (
   outputPath: string
 ): Promise<string> => {
   const sourceBytes = fs.readFileSync(sourcePdfPath);
-  const srcDoc = await PDFDocument.load(sourceBytes);
+  let srcDoc: PDFDocument;
+  try {
+    srcDoc = await PDFDocument.load(sourceBytes);
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    if (/PDFDocument\.load.*encrypted|input document.*encrypted/i.test(raw)) {
+      throw new Error(
+        "This PDF is encrypted or password-protected and cannot be auto-printed. Please upload an unlocked PDF."
+      );
+    }
+    throw err instanceof Error ? err : new Error(raw);
+  }
   const totalPages = srcDoc.getPageCount();
 
   // Clamp to actual page count
