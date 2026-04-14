@@ -1,7 +1,9 @@
 import { Server, Socket } from "socket.io";
 import { Shop } from "../models/Shop";
+import { IOrder } from "../models/Order";
 import { PrintJob, PrintProgress } from "../types";
 import { verifyAgentSecret } from "../utils/agentSecret";
+import { deleteFromS3 } from "../utils/s3";
 
 let io: Server | null = null;
 
@@ -191,9 +193,49 @@ export const setupAgentNamespace = (serverIo: Server): void => {
       });
     };
     forward("print:progress");
-    forward("print:done");
     forward("print:error");
     forward("print:warning");
+
+    socket.on("print:done", (data: { orderId?: string }) => {
+      const ownerId = shopOwnerCache.get(shopId);
+      if (ownerId && io) io.to(`user:${ownerId}`).emit("print:done", data);
+
+      void (async () => {
+        const orderId = data?.orderId;
+        if (!orderId) return;
+
+        const order = await IOrder.findOne({ _id: orderId, shop: shopId });
+        if (!order) return;
+        if (order.status === "completed" || order.status === "skipped") return;
+
+        order.status = "completed";
+
+        // Mirror existing completion behavior: clean up source file once done.
+        if (order.fileKey && !order.fileDeleted) {
+          try {
+            await deleteFromS3(order.fileKey);
+            order.fileDeleted = true;
+          } catch {
+            // Non-fatal: status update should still proceed.
+          }
+        }
+
+        await order.save();
+
+        emitToUser(String(order.student), "order:notification", {
+          message: `✅ Token #${order.token} — Your order is ready! Please collect it.`,
+          status: "completed",
+          token: order.token,
+        });
+
+        emitQueueUpdate({
+          type: "ORDER_UPDATED",
+          orderId: order._id,
+          token: order.token,
+          status: order.status,
+        });
+      })();
+    });
 
     socket.on("disconnect", () => {
       agentSockets.delete(shopId);
