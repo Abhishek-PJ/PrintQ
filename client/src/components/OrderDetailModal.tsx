@@ -68,7 +68,6 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
   const [editRules, setEditRules] = useState<PrintRule[]>(order.printOptions.printRules);
   const [pageDrafts, setPageDrafts] = useState<Record<string, string>>({});
   const [copies, setCopies]       = useState(order.printOptions.copies);
-  const [paperSize, setPaperSize] = useState<"A4" | "A3">(order.printOptions.paperSize);
   const [binding, setBinding]     = useState<"none" | "spiral" | "staple">(order.printOptions.binding);
   const [pricePreview, setPricePreview]   = useState<{ breakdown: PriceBreakdownItem[]; total: number } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -123,7 +122,12 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
 
     setSaving(true);
     try {
-      const { order: updated } = await editOrderApi(order._id, { printRules: effectiveRules, copies, paperSize, binding });
+      const { order: updated } = await editOrderApi(order._id, {
+        printRules: effectiveRules,
+        copies,
+        paperSize: "A4",
+        binding,
+      });
       const merged = { ...order, ...updated } as Order;
       setOrder(merged);
       setIsEditing(false);
@@ -142,7 +146,6 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
     setEditRules(order.printOptions.printRules);
     setPageDrafts({});
     setCopies(order.printOptions.copies);
-    setPaperSize(order.printOptions.paperSize);
     setBinding(order.printOptions.binding);
     setPricePreview(null);
     setIsEditing(false);
@@ -480,7 +483,7 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
               </div>
 
               {/* Global options */}
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="mb-1 block text-[10px] font-semibold uppercase text-slate-400">Copies</label>
                   <input
@@ -488,13 +491,6 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
                     onChange={(e) => setCopies(Math.max(1, parseInt(e.target.value) || 1))}
                     className={inputCls}
                   />
-                </div>
-                <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase text-slate-400">Paper</label>
-                  <select value={paperSize} onChange={(e) => setPaperSize(e.target.value as "A4" | "A3")} className={selectCls}>
-                    <option value="A4">A4</option>
-                    <option value="A3">A3</option>
-                  </select>
                 </div>
                 <div>
                   <label className="mb-1 block text-[10px] font-semibold uppercase text-slate-400">Binding</label>
