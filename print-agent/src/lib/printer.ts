@@ -29,18 +29,27 @@ const printWindows = (filePath: string, opts: PrintOptions): Promise<void> => {
 
     // execFile passes each arg directly to CreateProcess — spaces in
     // printer names and file paths are handled correctly with no extra quoting.
-    const args: string[] = [
-      "-print-to",
-      opts.printer || "-default-",
-      "-print-settings",
-      sumatraPrintSettings(opts),
-      "-silent",
-      filePath,
-    ];
+    const args: string[] = opts.printer
+      ? [
+          "-print-to",
+          opts.printer,
+          "-print-settings",
+          sumatraPrintSettings(opts),
+          "-silent",
+          filePath,
+        ]
+      : [
+          "-print-to-default",
+          "-print-settings",
+          sumatraPrintSettings(opts),
+          "-silent",
+          filePath,
+        ];
 
     execFile(sumatraExe, args, { timeout: 120_000 }, (err, _stdout, stderr) => {
       if (err) {
-        reject(new Error(`SumatraPDF print failed: ${stderr || err.message}`));
+        const cmd = `${sumatraExe} ${args.join(" ")}`;
+        reject(new Error(`SumatraPDF print failed: ${stderr || err.message} (cmd: ${cmd})`));
       } else {
         resolve();
       }
