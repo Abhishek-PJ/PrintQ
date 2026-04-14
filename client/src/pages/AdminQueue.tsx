@@ -29,6 +29,32 @@ interface PrintProgress {
   message?: string;
 }
 
+type AgentHealthState = "online" | "reconnecting" | "degraded";
+
+interface AgentHealth {
+  state: AgentHealthState;
+  message: string;
+  at: string;
+}
+
+const AGENT_HEALTH_STYLES: Record<AgentHealthState, { badge: string; dot: string; label: string }> = {
+  online: {
+    badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    dot: "bg-emerald-500 animate-pulse",
+    label: "Agent Online",
+  },
+  reconnecting: {
+    badge: "border-amber-200 bg-amber-50 text-amber-700",
+    dot: "bg-amber-500 animate-pulse",
+    label: "Reconnecting",
+  },
+  degraded: {
+    badge: "border-rose-200 bg-rose-50 text-rose-600",
+    dot: "bg-rose-400",
+    label: "Degraded",
+  },
+};
+
 const STEP_LABEL: Record<PrintStep, string> = {
   queued:      "Queued…",
   downloading: "Downloading…",
@@ -90,6 +116,11 @@ const AdminQueue = () => {
   const [loading, setLoading] = useState(true);
   const [agentOnline, setAgentOnline] = useState(false);
   const [agentPrinters, setAgentPrinters] = useState<string[]>([]);
+  const [agentHealth, setAgentHealth] = useState<AgentHealth>({
+    state: "degraded",
+    message: "Agent offline",
+    at: new Date().toISOString(),
+  });
   const [printProgress, setPrintProgress] = useState<Record<string, PrintProgress>>({});
   const [printWarnings, setPrintWarnings] = useState<Record<string, string[]>>({});
 
@@ -108,12 +139,24 @@ const AdminQueue = () => {
     if (!socket) return;
 
     const onQueueUpdate = () => { void fetchRef.current(); };
-    const onAgentStatus = ({ online, printers }: { online: boolean; printers: string[] }) => {
+    const onAgentStatus = ({
+      online,
+      printers,
+      health,
+    }: {
+      online: boolean;
+      printers: string[];
+      health?: AgentHealth | null;
+    }) => {
       setAgentOnline(online);
       setAgentPrinters(printers ?? []);
+      if (health) setAgentHealth(health);
       toast(online ? "🖨️ Print agent connected" : "⚠️ Print agent disconnected", {
         icon: online ? "✅" : "⚠️",
       });
+    };
+    const onAgentHealth = ({ health }: { health?: AgentHealth }) => {
+      if (health) setAgentHealth(health);
     };
     const onPrintProgress = (data: PrintProgress) => {
       setPrintProgress((prev) => ({ ...prev, [data.orderId]: data }));
@@ -137,6 +180,7 @@ const AdminQueue = () => {
 
     socket.on("queue:update", onQueueUpdate);
     socket.on("agent:status", onAgentStatus);
+    socket.on("agent:health", onAgentHealth);
     socket.on("print:progress", onPrintProgress);
     socket.on("print:done", onPrintDone);
     socket.on("print:error", onPrintError);
@@ -145,6 +189,7 @@ const AdminQueue = () => {
     return () => {
       socket.off("queue:update", onQueueUpdate);
       socket.off("agent:status", onAgentStatus);
+      socket.off("agent:health", onAgentHealth);
       socket.off("print:progress", onPrintProgress);
       socket.off("print:done", onPrintDone);
       socket.off("print:error", onPrintError);
@@ -199,6 +244,9 @@ const AdminQueue = () => {
     );
   }
 
+  const badgeState: AgentHealthState = agentOnline ? agentHealth.state : "degraded";
+  const badgeStyle = AGENT_HEALTH_STYLES[badgeState];
+
   return (
     <div className="space-y-4">
 
@@ -211,17 +259,13 @@ const AdminQueue = () => {
         <div className="flex flex-wrap items-center gap-2">
           {/* Agent status badge */}
           <div
-            className={`relative flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-              agentOnline
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                : "border-rose-200 bg-rose-50 text-rose-600"
+            className={`relative flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${badgeStyle.badge}`}
+            title={`${badgeStyle.label}. ${agentHealth.message}${
+              agentOnline ? ` | Printers: ${agentPrinters.join(", ") || "default"}` : ""
             }`}
-            title={agentOnline ? `Printers: ${agentPrinters.join(", ") || "default"}` : "Start the PrintQ Agent on the shop computer"}
           >
-            <span
-              className={`h-2 w-2 rounded-full ${agentOnline ? "animate-pulse bg-emerald-500" : "bg-rose-400"}`}
-            />
-            {agentOnline ? "Agent Online" : "Agent Offline"}
+            <span className={`h-2 w-2 rounded-full ${badgeStyle.dot}`} />
+            {agentOnline ? badgeStyle.label : "Agent Offline"}
           </div>
           <span className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />

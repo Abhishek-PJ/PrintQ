@@ -32,6 +32,7 @@ export interface Order {
   status: "pending" | "called" | "printing" | "skipped" | "completed";
   originalFileName: string;
   fileDeleted?: boolean;
+  documentPageCount?: number;
   printOptions: PrintOptions;
   totalPrice: number;
   priceBreakdown: PriceBreakdownItem[];

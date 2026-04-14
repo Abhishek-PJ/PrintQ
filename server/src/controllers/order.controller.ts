@@ -15,6 +15,35 @@ const actionToStatus: Record<OrderAction, OrderStatus> = {
   complete: "completed"
 };
 
+const validatePrintRules = (rules: PrintRule[], documentPageCount?: number): string | null => {
+  if (!Array.isArray(rules) || rules.length === 0) {
+    return "At least one print rule is required";
+  }
+
+  const seen = new Map<string, number>();
+  for (let i = 0; i < rules.length; i++) {
+    const r = rules[i];
+    const from = Number(r.fromPage);
+    const to = Number(r.toPage);
+
+    if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from) {
+      return `Rule ${i + 1} has an invalid page range`;
+    }
+    if (documentPageCount && (from > documentPageCount || to > documentPageCount)) {
+      return `Rule ${i + 1} exceeds document length (${documentPageCount} pages)`;
+    }
+
+    const signature = `${from}-${to}-${r.colorMode}-${r.sided}`;
+    const firstSeenAt = seen.get(signature);
+    if (firstSeenAt !== undefined) {
+      return `Rule ${i + 1} duplicates Rule ${firstSeenAt + 1}`;
+    }
+    seen.set(signature, i);
+  }
+
+  return null;
+};
+
 export const createOrder = async (req: AuthRequest, res: Response): Promise<void> => {
   const file = req.file;
   if (!file) {
@@ -47,6 +76,14 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
     return;
   }
 
+  const rawPageCount = Number(req.body.documentPageCount);
+  const documentPageCount = Number.isInteger(rawPageCount) && rawPageCount > 0 ? rawPageCount : undefined;
+  const ruleValidationError = validatePrintRules(printRules, documentPageCount);
+  if (ruleValidationError) {
+    res.status(400).json({ message: ruleValidationError });
+    return;
+  }
+
   const copies = Math.max(1, Number(req.body.copies || 1));
   const paperSize = req.body.paperSize === "A3" ? "A3" : "A4";
   const binding = (["none", "spiral", "staple"].includes(req.body.binding) ? req.body.binding : "none") as "none" | "spiral" | "staple";
@@ -68,6 +105,7 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
     fileKey,
     fileUrl,
     fileDeleted: false,
+    documentPageCount,
     printOptions: {
       printRules,
       copies,
@@ -93,6 +131,7 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
       priceBreakdown: order.priceBreakdown,
       paymentStatus: order.paymentStatus,
       originalFileName: order.originalFileName
+      ,documentPageCount: order.documentPageCount
     }
   });
 };
@@ -333,8 +372,9 @@ export const editOrder = async (req: AuthRequest, res: Response): Promise<void> 
   };
 
   if (printRules !== undefined) {
-    if (!Array.isArray(printRules) || printRules.length === 0) {
-      res.status(400).json({ message: "At least one print rule is required" });
+    const ruleValidationError = validatePrintRules(printRules, order.documentPageCount);
+    if (ruleValidationError) {
+      res.status(400).json({ message: ruleValidationError });
       return;
     }
     order.printOptions.printRules = printRules;

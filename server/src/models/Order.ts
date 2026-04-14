@@ -23,6 +23,7 @@ export interface IOrder extends Document {
   fileKey: string;
   fileUrl: string;
   fileDeleted: boolean;
+  documentPageCount?: number;
   printOptions: IPrintOptions;
   totalPrice: number;
   priceBreakdown: IPriceBreakdownItem[];
@@ -70,6 +71,7 @@ const orderSchema = new Schema<IOrder>(
     fileKey: { type: String, default: "" },
     fileUrl: { type: String, default: "" },
     fileDeleted: { type: Boolean, default: false },
+    documentPageCount: { type: Number, min: 1, required: false },
     printOptions: { type: printOptionsSchema, required: true },
     totalPrice: { type: Number, required: true, default: 0 },
     priceBreakdown: { type: [priceBreakdownItemSchema], default: [] },

@@ -154,6 +154,8 @@ const StudentDashboard = () => {
   const [pageCountLoading, setPageCountLoading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [step, setStep] = useState<Step>(1);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [pageDrafts, setPageDrafts] = useState<Record<string, string>>({});
 
   // Print rules
   const [printRules, setPrintRules] = useState<PrintRule[]>([emptyRule()]);
@@ -218,6 +220,77 @@ const StudentDashboard = () => {
     );
   };
 
+  const pageDraftKey = (idx: number, field: "fromPage" | "toPage") => `${idx}:${field}`;
+
+  const beginPageEdit = (idx: number, field: "fromPage" | "toPage", value: number) => {
+    setPageDrafts((prev) => ({ ...prev, [pageDraftKey(idx, field)]: String(value) }));
+  };
+
+  const handlePageInput = (idx: number, field: "fromPage" | "toPage", raw: string) => {
+    if (!/^\d*$/.test(raw)) return;
+    setPageDrafts((prev) => ({ ...prev, [pageDraftKey(idx, field)]: raw }));
+  };
+
+  const commitPageInput = (idx: number, field: "fromPage" | "toPage", fallback: number) => {
+    const key = pageDraftKey(idx, field);
+    const raw = pageDrafts[key];
+    const trimmed = (raw ?? "").trim();
+
+    if (trimmed !== "") {
+      const n = Number(trimmed);
+      if (Number.isFinite(n) && n >= 1) {
+        updateRule(idx, { [field]: n } as Partial<PrintRule>);
+        setPageDrafts((prev) => ({ ...prev, [key]: String(n) }));
+        return;
+      }
+    }
+
+    // If user leaves field empty/invalid, snap draft back to current visible value.
+    setPageDrafts((prev) => ({ ...prev, [key]: String(fallback) }));
+  };
+
+  const getEffectiveRules = (): PrintRule[] => {
+    return printRules.map((rule, idx) => {
+      const fromDraft = pageDrafts[pageDraftKey(idx, "fromPage")];
+      const toDraft = pageDrafts[pageDraftKey(idx, "toPage")];
+
+      const fromCandidate = fromDraft !== undefined && /^\d+$/.test(fromDraft)
+        ? Number(fromDraft)
+        : rule.fromPage;
+      const toCandidate = toDraft !== undefined && /^\d+$/.test(toDraft)
+        ? Number(toDraft)
+        : rule.toPage;
+
+      return {
+        ...rule,
+        fromPage: fromCandidate,
+        toPage: toCandidate,
+      };
+    });
+  };
+
+  const validateRulesWithinPages = (rules: PrintRule[]): string | null => {
+    const seen = new Map<string, number>();
+
+    for (let i = 0; i < rules.length; i++) {
+      const r = rules[i];
+      if (!Number.isInteger(r.fromPage) || !Number.isInteger(r.toPage) || r.fromPage < 1 || r.toPage < r.fromPage) {
+        return `Rule ${i + 1} has an invalid page range.`;
+      }
+      if (totalPages !== null && (r.fromPage > totalPages || r.toPage > totalPages)) {
+        return `Rule ${i + 1} exceeds document length (${totalPages} pages).`;
+      }
+
+      const signature = `${r.fromPage}-${r.toPage}-${r.colorMode}-${r.sided}`;
+      const firstSeenAt = seen.get(signature);
+      if (firstSeenAt !== undefined) {
+        return `Rule ${i + 1} duplicates Rule ${firstSeenAt + 1}. Please merge or change duplicate rules.`;
+      }
+      seen.set(signature, i);
+    }
+    return null;
+  };
+
   const addRule = () =>
     setPrintRules((prev) => {
       const last = prev[prev.length - 1];
@@ -240,12 +313,11 @@ const StudentDashboard = () => {
       setMessage("Please select a print shop.");
       return;
     }
-    if (totalPages !== null) {
-      const bad = printRules.find((r) => r.fromPage > totalPages || r.toPage > totalPages);
-      if (bad) {
-        setMessage(`Page range exceeds document length (${totalPages} pages).`);
-        return;
-      }
+    const effectiveRules = getEffectiveRules();
+    const validationError = validateRulesWithinPages(effectiveRules);
+    if (validationError) {
+      setMessage(validationError);
+      return;
     }
     setMessage("");
     setStep(2);
@@ -253,18 +325,38 @@ const StudentDashboard = () => {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setMessage("");
+
+    if (!file) {
+      setMessage("Please select a document first.");
+      return;
+    }
+    if (!selectedShop) {
+      setMessage("Please select a print shop.");
+      return;
+    }
+
+    const effectiveRules = getEffectiveRules();
+    const validationError = validateRulesWithinPages(effectiveRules);
+    if (validationError) {
+      setMessage(validationError);
+      return;
+    }
+
+    setLoading(true);
 
     try {
       const formData = new FormData();
-      formData.append("document", file!);
+      formData.append("document", file);
       formData.append("shopId", selectedShop);
-      formData.append("printRules", JSON.stringify(printRules));
+      formData.append("printRules", JSON.stringify(effectiveRules));
       formData.append("copies", String(copies));
       formData.append("paperSize", "A4");
       formData.append("binding", binding);
       formData.append("paymentStatus", payOnline ? "paid" : "unpaid");
+      if (totalPages !== null) {
+        formData.append("documentPageCount", String(totalPages));
+      }
 
       const res = await submitOrderApi(formData);
 
@@ -306,6 +398,8 @@ const StudentDashboard = () => {
       ))}
     </div>
   );
+
+ 
 
   return (
     <div className="mx-auto max-w-xl">
@@ -418,7 +512,11 @@ const StudentDashboard = () => {
                         {file.type === "application/pdf" && (
                           <button
                             type="button"
-                            onClick={(e) => { e.preventDefault(); setPreviewOpen(true); }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setPreviewOpen(true);
+                            }}
                             className="flex items-center gap-1 rounded-full border border-violet-200 bg-white px-2.5 py-0.5 text-xs font-medium text-violet-600 hover:bg-violet-50"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -428,7 +526,21 @@ const StudentDashboard = () => {
                           </button>
                         )}
                       </div>
-                      <p className="text-xs text-violet-500 underline-offset-2 hover:underline">Change file</p>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!fileInputRef.current) return;
+                          // Allow selecting the same file again and still trigger onChange.
+                          fileInputRef.current.value = "";
+                          fileInputRef.current.click();
+                        }}
+                        className="text-xs text-violet-500 underline-offset-2 hover:underline"
+                      >
+                        Change file
+                      </button>
+                        
                     </>
                   ) : (
                     <>
@@ -442,6 +554,7 @@ const StudentDashboard = () => {
                     </>
                   )}
                   <input
+                    ref={fileInputRef}
                     type="file"
                     accept=".pdf,.doc,.docx"
                     className="sr-only"
@@ -537,9 +650,25 @@ const StudentDashboard = () => {
                               From page
                             </label>
                             <input
-                              type="number" min={1} max={totalPages ?? undefined}
-                              value={rule.fromPage}
-                              onChange={(e) => updateRule(idx, { fromPage: Number(e.target.value) })}
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              min={1}
+                              max={totalPages ?? undefined}
+                              value={pageDrafts[pageDraftKey(idx, "fromPage")] ?? String(rule.fromPage)}
+                              onFocus={(e) => {
+                                beginPageEdit(idx, "fromPage", rule.fromPage);
+                                const input = e.currentTarget;
+                                setTimeout(() => input.select(), 0);
+                              }}
+                              onClick={(e) => e.currentTarget.select()}
+                              onMouseUp={(e) => e.preventDefault()}
+                              onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                              }}
+                              onChange={(e) => handlePageInput(idx, "fromPage", e.target.value)}
+                              onBlur={() => commitPageInput(idx, "fromPage", rule.fromPage)}
                               className={`w-full rounded-xl border px-3 py-2.5 text-sm text-center font-semibold focus:outline-none focus:ring-2 focus:ring-violet-100 ${fromErr ? "border-red-300 bg-red-50 text-red-600" : "border-slate-200 bg-slate-50 focus:border-violet-400"}`}
                             />
                           </div>
@@ -549,9 +678,25 @@ const StudentDashboard = () => {
                               To page
                             </label>
                             <input
-                              type="number" min={rule.fromPage} max={totalPages ?? undefined}
-                              value={rule.toPage}
-                              onChange={(e) => updateRule(idx, { toPage: Number(e.target.value) })}
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              min={rule.fromPage}
+                              max={totalPages ?? undefined}
+                              value={pageDrafts[pageDraftKey(idx, "toPage")] ?? String(rule.toPage)}
+                              onFocus={(e) => {
+                                beginPageEdit(idx, "toPage", rule.toPage);
+                                const input = e.currentTarget;
+                                setTimeout(() => input.select(), 0);
+                              }}
+                              onClick={(e) => e.currentTarget.select()}
+                              onMouseUp={(e) => e.preventDefault()}
+                              onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                              }}
+                              onChange={(e) => handlePageInput(idx, "toPage", e.target.value)}
+                              onBlur={() => commitPageInput(idx, "toPage", rule.toPage)}
                               className={`w-full rounded-xl border px-3 py-2.5 text-sm text-center font-semibold focus:outline-none focus:ring-2 focus:ring-violet-100 ${toErr ? "border-red-300 bg-red-50 text-red-600" : "border-slate-200 bg-slate-50 focus:border-violet-400"}`}
                             />
                           </div>

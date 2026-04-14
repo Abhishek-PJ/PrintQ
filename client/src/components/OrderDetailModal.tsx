@@ -66,6 +66,7 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
 
   /* edit form state */
   const [editRules, setEditRules] = useState<PrintRule[]>(order.printOptions.printRules);
+  const [pageDrafts, setPageDrafts] = useState<Record<string, string>>({});
   const [copies, setCopies]       = useState(order.printOptions.copies);
   const [paperSize, setPaperSize] = useState<"A4" | "A3">(order.printOptions.paperSize);
   const [binding, setBinding]     = useState<"none" | "spiral" | "staple">(order.printOptions.binding);
@@ -75,6 +76,7 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
   const isActive = order.status !== "completed" && order.status !== "skipped";
   const canEdit  = order.status === "pending";
   const st       = STATUS_STYLES[order.status] ?? STATUS_STYLES.pending;
+  const maxPageLimit = order.documentPageCount ?? Math.max(1, ...order.printOptions.printRules.map((r) => r.toPage));
 
   /* fetch queue position on mount (active orders only) */
   useEffect(() => {
@@ -90,17 +92,18 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
   useEffect(() => {
     if (!isEditing || !order.shop?._id) return;
     const tid = window.setTimeout(async () => {
-      if (editRules.length === 0) return;
+      const effectiveRules = getEffectiveRules();
+      if (effectiveRules.length === 0) return;
       setPreviewLoading(true);
       try {
-        const preview = await previewPriceApi(editRules, copies, order.shop!._id);
+        const preview = await previewPriceApi(effectiveRules, copies, order.shop!._id);
         setPricePreview(preview);
       } catch { /* ignore */ } finally {
         setPreviewLoading(false);
       }
     }, 500);
     return () => clearTimeout(tid);
-  }, [isEditing, editRules, copies, order.shop?._id]);
+  }, [isEditing, editRules, pageDrafts, copies, order.shop?._id]);
 
   /* ESC to close */
   useEffect(() => {
@@ -111,18 +114,20 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
 
   /* ── Handlers ── */
   const handleSave = async () => {
-    for (const r of editRules) {
-      if (r.fromPage < 1 || r.toPage < r.fromPage) {
-        toast.error("Each rule must have a valid page range (From ≤ To).");
-        return;
-      }
+    const effectiveRules = getEffectiveRules();
+    const validationError = validateRules(effectiveRules);
+    if (validationError) {
+      toast.error(validationError);
+      return;
     }
+
     setSaving(true);
     try {
-      const { order: updated } = await editOrderApi(order._id, { printRules: editRules, copies, paperSize, binding });
+      const { order: updated } = await editOrderApi(order._id, { printRules: effectiveRules, copies, paperSize, binding });
       const merged = { ...order, ...updated } as Order;
       setOrder(merged);
       setIsEditing(false);
+      setPageDrafts({});
       setPricePreview(null);
       toast.success("Order updated!");
       onOrderUpdated(merged);
@@ -135,6 +140,7 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
 
   const handleCancelEdit = () => {
     setEditRules(order.printOptions.printRules);
+    setPageDrafts({});
     setCopies(order.printOptions.copies);
     setPaperSize(order.printOptions.paperSize);
     setBinding(order.printOptions.binding);
@@ -165,18 +171,104 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
     );
   };
 
+  const pageDraftKey = (idx: number, field: "fromPage" | "toPage") => `${idx}:${field}`;
+
+  const beginPageEdit = (idx: number, field: "fromPage" | "toPage", value: number) => {
+    setPageDrafts((prev) => ({ ...prev, [pageDraftKey(idx, field)]: String(value) }));
+  };
+
+  const handlePageInput = (idx: number, field: "fromPage" | "toPage", raw: string) => {
+    if (!/^\d*$/.test(raw)) return;
+    setPageDrafts((prev) => ({ ...prev, [pageDraftKey(idx, field)]: raw }));
+  };
+
+  const commitPageInput = (idx: number, field: "fromPage" | "toPage", fallback: number) => {
+    const key = pageDraftKey(idx, field);
+    const raw = pageDrafts[key];
+    const trimmed = (raw ?? "").trim();
+
+    if (trimmed !== "") {
+      const n = Number(trimmed);
+      if (Number.isFinite(n) && n >= 1) {
+        const bounded = Math.min(maxPageLimit, n);
+        updateRule(idx, field, bounded);
+        setPageDrafts((prev) => ({ ...prev, [key]: String(bounded) }));
+        return;
+      }
+    }
+
+    // If user leaves field empty/invalid, snap draft back to current visible value.
+    setPageDrafts((prev) => ({ ...prev, [key]: String(fallback) }));
+  };
+
+  const getEffectiveRules = (): PrintRule[] => {
+    return editRules.map((rule, idx) => {
+      const fromDraft = pageDrafts[pageDraftKey(idx, "fromPage")];
+      const toDraft = pageDrafts[pageDraftKey(idx, "toPage")];
+
+      const fromCandidate = fromDraft !== undefined && /^\d+$/.test(fromDraft)
+        ? Number(fromDraft)
+        : rule.fromPage;
+      const toCandidate = toDraft !== undefined && /^\d+$/.test(toDraft)
+        ? Number(toDraft)
+        : rule.toPage;
+
+      return {
+        ...rule,
+        fromPage: fromCandidate,
+        toPage: toCandidate,
+      };
+    });
+  };
+
+  const validateRules = (rules: PrintRule[]): string | null => {
+    const seen = new Map<string, number>();
+    for (let i = 0; i < rules.length; i++) {
+      const r = rules[i];
+      if (!Number.isInteger(r.fromPage) || !Number.isInteger(r.toPage) || r.fromPage < 1 || r.toPage < r.fromPage) {
+        return `Rule ${i + 1} has an invalid page range (From <= To).`;
+      }
+      if (r.fromPage > maxPageLimit || r.toPage > maxPageLimit) {
+        return `Rule ${i + 1} exceeds document length (${maxPageLimit} pages).`;
+      }
+      const signature = `${r.fromPage}-${r.toPage}-${r.colorMode}-${r.sided}`;
+      const firstSeenAt = seen.get(signature);
+      if (firstSeenAt !== undefined) {
+        return `Rule ${i + 1} duplicates Rule ${firstSeenAt + 1}. Please merge or change duplicate rules.`;
+      }
+      seen.set(signature, i);
+    }
+    return null;
+  };
+
   const addRule = () => {
     const last = editRules[editRules.length - 1];
     const nextFrom = last ? last.toPage + 1 : 1;
+    if (nextFrom > maxPageLimit) {
+      toast.error(`No more pages left. Document has ${maxPageLimit} pages.`);
+      return;
+    }
     setEditRules((prev) => [
       ...prev,
-      { fromPage: nextFrom, toPage: nextFrom + 4, colorMode: "bw", sided: "single" },
+      { fromPage: nextFrom, toPage: Math.min(maxPageLimit, nextFrom + 4), colorMode: "bw", sided: "single" },
     ]);
   };
 
   const removeRule = (idx: number) => {
     if (editRules.length <= 1) return;
     setEditRules((prev) => prev.filter((_, i) => i !== idx));
+    setPageDrafts((prev) => {
+      const next: Record<string, string> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        const [idxPart, field] = k.split(":");
+        const oldIdx = Number(idxPart);
+        if (!Number.isInteger(oldIdx) || (field !== "fromPage" && field !== "toPage")) continue;
+        if (oldIdx === idx) continue;
+        const newIdx = oldIdx > idx ? oldIdx - 1 : oldIdx;
+        next[`${newIdx}:${field}`] = v;
+      }
+      return next;
+    });
   };
 
   /* ── CSS shorthands ── */
@@ -256,7 +348,7 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
                       </p>
                       <p className="mt-1 text-xs text-indigo-500">
                         {queueStatus.ordersAhead === 0
-                          ? "🎉 You're next in line!"
+                          ? "You're next in line!"
                           : queueStatus.ordersAhead === 1
                           ? "1 order ahead of you"
                           : `${queueStatus.ordersAhead} orders ahead of you`}
@@ -294,6 +386,7 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
               <p className="text-[10px] font-bold uppercase tracking-widest text-violet-500">
                 Edit Print Configuration
               </p>
+              <p className="text-[11px] text-violet-600">Document length: {maxPageLimit} pages</p>
 
               {/* Print rules */}
               <div className="space-y-2">
@@ -316,16 +409,46 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
                       <div>
                         <label className="mb-1 block text-[10px] font-semibold uppercase text-slate-400">From Page</label>
                         <input
-                          type="number" min={1} value={rule.fromPage}
-                          onChange={(e) => updateRule(idx, "fromPage", parseInt(e.target.value) || 1)}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          min={1}
+                          max={maxPageLimit}
+                          value={pageDrafts[pageDraftKey(idx, "fromPage")] ?? String(rule.fromPage)}
+                          onFocus={(e) => {
+                            beginPageEdit(idx, "fromPage", rule.fromPage);
+                            const input = e.currentTarget;
+                            setTimeout(() => input.select(), 0);
+                          }}
+                          onClick={(e) => e.currentTarget.select()}
+                          onMouseUp={(e) => e.preventDefault()}
+                          onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
+                          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                          onChange={(e) => handlePageInput(idx, "fromPage", e.target.value)}
+                          onBlur={() => commitPageInput(idx, "fromPage", rule.fromPage)}
                           className={inputCls}
                         />
                       </div>
                       <div>
                         <label className="mb-1 block text-[10px] font-semibold uppercase text-slate-400">To Page</label>
                         <input
-                          type="number" min={rule.fromPage} value={rule.toPage}
-                          onChange={(e) => updateRule(idx, "toPage", parseInt(e.target.value) || rule.fromPage)}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          min={rule.fromPage}
+                          max={maxPageLimit}
+                          value={pageDrafts[pageDraftKey(idx, "toPage")] ?? String(rule.toPage)}
+                          onFocus={(e) => {
+                            beginPageEdit(idx, "toPage", rule.toPage);
+                            const input = e.currentTarget;
+                            setTimeout(() => input.select(), 0);
+                          }}
+                          onClick={(e) => e.currentTarget.select()}
+                          onMouseUp={(e) => e.preventDefault()}
+                          onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
+                          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                          onChange={(e) => handlePageInput(idx, "toPage", e.target.value)}
+                          onBlur={() => commitPageInput(idx, "toPage", rule.toPage)}
                           className={inputCls}
                         />
                       </div>
@@ -495,7 +618,7 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
                 onClick={() => setIsEditing(true)}
                 className="w-full rounded-xl bg-violet-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-500"
               >
-                ✏️ Edit Print Configuration
+                Edit Print Configuration
               </button>
 
               {confirmDelete ? (
@@ -525,7 +648,7 @@ const OrderDetailModal = ({ order: initialOrder, onClose, onOrderUpdated, onOrde
                   onClick={() => setConfirmDelete(true)}
                   className="w-full rounded-xl border border-red-200 py-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50"
                 >
-                  🗑️ Delete Order
+                  Delete Order
                 </button>
               )}
             </div>
