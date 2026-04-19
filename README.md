@@ -33,6 +33,14 @@ A full-stack MERN application for managing print-shop queues in real time. Users
 - **Smart print rules** — First rule auto-fills the full page range; each new rule continues from where the last one ended
 - **Printer capability detection** — Agent auto-detects connected printers and their color/duplex support and reports them to the server
 
+### Latest Updates (Apr 2026)
+
+- **Reliable Windows default printing** — The print agent now uses SumatraPDF's correct default-printer mode (`-print-to-default`) when `PRINTER_NAME` is not set, reducing command-level print failures.
+- **Friendly encrypted PDF handling** — Password-protected/encrypted PDFs now fail with a clear actionable error message instead of a raw `PDFDocument.load(...)` exception.
+- **Last-known-good printer cache** — If a transient OS probe returns no printers/capabilities, the agent preserves the previous valid printer state to avoid false offline/none-printer flips.
+- **Reconnect health telemetry** — Agent now emits health states (`online`, `reconnecting`, `degraded`) with reconnect attempt context and exponential backoff window logging.
+- **Live admin health badge upgrades** — Admin Queue UI now reflects agent health states beyond just online/offline, including reconnecting and degraded state visibility in real time.
+
 > Super Admin is created via the seed script — it cannot be self-registered.
 
 ---

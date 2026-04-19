@@ -8,7 +8,7 @@ export interface PrintRule {
 export interface PrintOptions {
   printRules: PrintRule[];
   copies: number;
-  paperSize: "A4" | "A3";
+  paperSize: "A4";
   binding: "none" | "spiral" | "staple";
 }
 

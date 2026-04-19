@@ -5,16 +5,16 @@ import { processJob, purgeStaleFiles } from "./jobs/processJob";
 import { PrintJob, PrinterCapabilities } from "./types";
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const rawServerUrl = process.env.SERVER_URL || "http://localhost:5000";
+const rawServerUrl = (process.env.SERVER_URL || "http://localhost:5000").trim();
 const SERVER_URL = rawServerUrl.replace(/\/+$/, "");
-const AGENT_SECRET = process.env.AGENT_SECRET  || "";
-const SHOP_ID      = process.env.SHOP_ID       || "";
+const AGENT_SECRET = (process.env.AGENT_SECRET || "").trim();
+const SHOP_ID      = (process.env.SHOP_ID || "").trim();
 const RECONNECT_DELAY_MS = 2_000;
 const RECONNECT_DELAY_MAX_MS = 20_000;
 const RECONNECT_RANDOMIZATION = 0.5;
 
 if (!AGENT_SECRET || !SHOP_ID) {
-  console.error("❌  AGENT_SECRET and SHOP_ID must be set in .env");
+  console.error(" AGENT_SECRET and SHOP_ID must be set in .env");
   process.exit(1);
 }
 
@@ -106,7 +106,7 @@ const refreshPrinters = (socket: ReturnType<typeof io>) => {
   lastKnownPrinters = printers;
 
   if (changed) {
-    console.log(`🖨️   Printers updated: ${printers.length ? printers.join(", ") : "(none)"}`);
+    console.log(`Printers updated: ${printers.length ? printers.join(", ") : "(none)"}`);
     Object.values(caps).forEach((c) => {
       console.log(`     ${c.name}: color=${c.color}, duplex=${c.duplex}`);
     });
@@ -129,7 +129,7 @@ const connect = () => {
   });
 
   socket.on("connect", () => {
-    console.log(`✅  Connected to PrintQ server at ${SERVER_URL}`);
+    console.log(`Connected to PrintQ server at ${SERVER_URL}`);
     emitHealth(socket, "online", "Connected to server");
 
     // Clean up any leftover temp files from the previous session / crash
@@ -141,7 +141,7 @@ const connect = () => {
     printerCapabilities = detected.caps;
     lastKnownPrinters = printers;
 
-    console.log(`🖨️   Printers: ${printers.length ? printers.join(", ") : "(none detected)"}`);
+    console.log(`Printers: ${printers.length ? printers.join(", ") : "(none detected)"}`);
     Object.values(printerCapabilities).forEach((c) => {
       console.log(`     ${c.name}: color=${c.color}, duplex=${c.duplex}`);
     });
@@ -156,12 +156,12 @@ const connect = () => {
     printerRefreshTimer = setInterval(() => refreshPrinters(socket), PRINTER_REFRESH_MS);
   });
 
-  socket.on("agent:ack", ({ shopId }: { shopId: string }) => {
-    console.log(`🏪  Shop registered: ${shopId}`);
+  socket.on("agent:ack", ({ shopName, shopId }: { shopName?: string | null; shopId: string }) => {
+    console.log(`Shop registered: ${shopName?.trim() || shopId}`);
   });
 
   socket.on("print:job", (job: PrintJob) => {
-    console.log(`📄  Received job for order #${job.token} (${job.fileName})`);
+    console.log(`Received job for order #${job.token} (${job.fileName})`);
 
     // If the agent is currently busy, tell the admin the job is queued
     if (busy) {
@@ -177,7 +177,7 @@ const connect = () => {
   });
 
   socket.on("connect_error", (err: Error) => {
-    console.error(`⚠️   Connection error: ${err.message}`);
+    console.error(`Connection error: ${err.message}`);
     emitHealth(socket, "degraded", `Connection error: ${err.message}`);
   });
 
@@ -206,14 +206,14 @@ const connect = () => {
 
   socket.io.on("reconnect_failed", () => {
     const msg = "Reconnect attempts exhausted";
-    console.error(`❌  ${msg}`);
+    console.error(` ${msg}`);
     emitHealth(socket, "degraded", msg);
   });
 
   return socket;
 };
 
-// ── Startup ───────────────────────────────────────────────────────────────────
+// ── Startup ────
 console.log("PrintQ Local Print Agent");
 console.log(`  Server : ${SERVER_URL}`);
 console.log(`  Shop   : ${SHOP_ID}`);

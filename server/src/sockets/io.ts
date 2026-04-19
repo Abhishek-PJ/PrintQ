@@ -1,4 +1,5 @@
 import { Server, Socket } from "socket.io";
+import { Types } from "mongoose";
 import { Shop } from "../models/Shop";
 import { IOrder } from "../models/Order";
 import { PrintJob, PrintProgress } from "../types";
@@ -94,6 +95,22 @@ export const getAgentStatusForOwner = async (
 export const setupAgentNamespace = (serverIo: Server): void => {
   const agentNs = serverIo.of("/agent");
 
+  const resolveShopForAgentAuth = async (shopOrOwnerId: string) => {
+    const projection = "owner status name +agentSecretHash";
+
+    const byShopId = await Shop.findById(shopOrOwnerId)
+      .select(projection)
+      .lean<{ owner: unknown; status?: string; name: string; agentSecretHash?: string }>();
+    if (byShopId) return byShopId;
+
+    if (!Types.ObjectId.isValid(shopOrOwnerId)) return null;
+    const byOwnerId = await Shop.findOne({ owner: new Types.ObjectId(shopOrOwnerId) })
+      .select(projection)
+      .lean<{ owner: unknown; status?: string; name: string; agentSecretHash?: string }>();
+
+    return byOwnerId;
+  };
+
   // Authenticate agent connections via per-shop secret + shopId
   agentNs.use((socket, next) => {
     void (async () => {
@@ -103,11 +120,11 @@ export const setupAgentNamespace = (serverIo: Server): void => {
         return;
       }
 
-      const shop = await Shop.findById(auth.shopId)
-        .select("owner status +agentSecretHash")
-        .lean<{ owner: unknown; status: string; agentSecretHash?: string }>();
+      const shop = await resolveShopForAgentAuth(auth.shopId);
 
-      if (!shop || shop.status !== "approved") {
+      const isApproved = String(shop?.status ?? "").toLowerCase() === "approved";
+
+      if (!shop || !isApproved) {
         next(new Error("Shop not approved or not found"));
         return;
       }
@@ -124,6 +141,7 @@ export const setupAgentNamespace = (serverIo: Server): void => {
 
       socket.data.shopId = auth.shopId;
       socket.data.ownerId = String(shop.owner);
+      socket.data.shopName = shop.name;
       next();
     })().catch(() => next(new Error("Agent authentication failed")));
   });
@@ -136,7 +154,8 @@ export const setupAgentNamespace = (serverIo: Server): void => {
       message: "Connected to server",
       at: new Date().toISOString(),
     });
-    console.log(`[agent] connected for shop ${shopId}`);
+    const shopName = socket.data.shopName as string | undefined;
+    console.log(`[agent] connected for shop ${shopName ?? shopId}`);
 
     /** Look up the shop owner once and notify them that the agent is online */
     const notifyOwner = async (printers: string[]) => {
@@ -148,7 +167,7 @@ export const setupAgentNamespace = (serverIo: Server): void => {
           ownerId = String(shop.owner);
         }
         shopOwnerCache.set(shopId, ownerId);
-        socket.emit("agent:ack", { shopId });
+        socket.emit("agent:ack", { shopId, shopName: socket.data.shopName ?? null });
         if (io) {
           io.to(`user:${ownerId}`).emit("agent:status", {
             online: true,
@@ -241,7 +260,8 @@ export const setupAgentNamespace = (serverIo: Server): void => {
       agentSockets.delete(shopId);
       agentPrinters.delete(shopId);
       agentHealth.delete(shopId);
-      console.log(`[agent] disconnected for shop ${shopId}`);
+      const shopName = socket.data.shopName as string | undefined;
+      console.log(`[agent] disconnected for shop ${shopName ?? shopId}`);
       const ownerId = shopOwnerCache.get(shopId);
       if (ownerId && io) {
         io.to(`user:${ownerId}`).emit("agent:status", {
