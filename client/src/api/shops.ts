@@ -23,6 +23,16 @@ export const getMyShopApi = async (): Promise<{ shop: Shop | null }> => {
   return data;
 };
 
+export const updateMyShopDetailsApi = async (payload: {
+  name: string;
+  address: string;
+  phone: string;
+  services: string[];
+}): Promise<{ message: string; shop: Shop }> => {
+  const { data } = await api.patch<{ message: string; shop: Shop }>("/shops/mine", payload);
+  return data;
+};
+
 export const getApprovedShopsApi = async (): Promise<{ shops: Shop[] }> => {
   const { data } = await api.get<{ shops: Shop[] }>("/shops/approved");
   return data;

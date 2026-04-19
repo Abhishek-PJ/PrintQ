@@ -54,6 +54,7 @@ const App = () => {
           }
         >
           <Route index element={<AdminQueue />} />
+          <Route path="queue" element={<AdminQueue />} />
           <Route path="analytics" element={<AdminAnalytics />} />
           <Route path="history" element={<AdminHistory />} />
           <Route path="shop" element={<AdminShopRegistration />} />

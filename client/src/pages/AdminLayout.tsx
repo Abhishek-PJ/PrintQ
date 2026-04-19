@@ -54,14 +54,14 @@ const AdminLayout = () => {
                 <span className="hidden sm:inline">History</span>
               </NavLink>
 
-              {/* Shop registration */}
+              {/* Shop settings */}
               <NavLink to="/admin/shop" className={navLinkClass}>
                 <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round"
                     d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
                   <polyline strokeLinecap="round" strokeLinejoin="round" points="9 22 9 12 15 12 15 22" />
                 </svg>
-                <span className="hidden sm:inline">Shop</span>
+                <span className="hidden sm:inline">Shop Settings</span>
               </NavLink>
             </nav>
           </div>

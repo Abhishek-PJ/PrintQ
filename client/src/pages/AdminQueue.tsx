@@ -277,21 +277,6 @@ const AdminQueue = () => {
         </div>
       </div>
 
-      {/* Agent offline warning */}
-      {!agentOnline && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span className="mt-0.5 text-base">⚠️</span>
-          <div>
-            <p className="font-semibold">Print Agent is not running</p>
-            <p className="mt-0.5 text-xs text-amber-700">
-              The Print button requires the PrintQ Agent to be running on this shop computer.
-              Run <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-[11px]">npm start</code> inside
-              the <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-[11px]">print-agent/</code> folder.
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Queue */}
       <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
         {queue.length === 0 ? (

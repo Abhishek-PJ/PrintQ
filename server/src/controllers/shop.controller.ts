@@ -41,6 +41,59 @@ export const getMyShop = async (req: AuthRequest, res: Response): Promise<void> 
   res.json({ shop: shop || null });
 };
 
+export const updateMyShopDetails = async (req: AuthRequest, res: Response): Promise<void> => {
+  const shop = await Shop.findOne({ owner: req.user?.userId });
+  if (!shop) {
+    res.status(404).json({ message: "Shop not found" });
+    return;
+  }
+
+  const { name, address, phone, services } = req.body as {
+    name?: string;
+    address?: string;
+    phone?: string;
+    services?: string[];
+  };
+
+  if (name !== undefined) {
+    const normalized = name.trim();
+    if (!normalized) {
+      res.status(400).json({ message: "Shop name cannot be empty" });
+      return;
+    }
+    shop.name = normalized;
+  }
+
+  if (address !== undefined) {
+    const normalized = address.trim();
+    if (!normalized) {
+      res.status(400).json({ message: "Address cannot be empty" });
+      return;
+    }
+    shop.address = normalized;
+  }
+
+  if (phone !== undefined) {
+    const normalized = phone.trim();
+    if (!normalized) {
+      res.status(400).json({ message: "Phone cannot be empty" });
+      return;
+    }
+    shop.phone = normalized;
+  }
+
+  if (services !== undefined) {
+    if (!Array.isArray(services)) {
+      res.status(400).json({ message: "services must be an array of strings" });
+      return;
+    }
+    shop.services = Array.from(new Set(services.map((s) => String(s).trim()).filter(Boolean)));
+  }
+
+  await shop.save();
+  res.json({ message: "Shop details updated", shop });
+};
+
 export const updateShopPricing = async (req: AuthRequest, res: Response): Promise<void> => {
   const shop = await Shop.findOne({ owner: req.user?.userId });
   if (!shop) {
