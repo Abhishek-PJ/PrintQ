@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
+import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.routes";
 import orderRoutes from "./routes/order.routes";
 import shopRoutes from "./routes/shop.routes";
@@ -36,6 +37,7 @@ const corsOptions: cors.CorsOptions = {
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));

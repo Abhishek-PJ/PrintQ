@@ -4,7 +4,7 @@ import { app } from "./app";
 import { connectDB } from "./config/db";
 import { env } from "./config/env";
 import { getAgentStatusForOwner, setSocketServer, setupAgentNamespace } from "./sockets/io";
-import { verifyToken } from "./utils/jwt";
+import { verifyAccessToken } from "./utils/jwt";
 
 const socketAllowedOrigins = ["http://localhost:5173", ...env.clientUrl.split(",")]
   .map((origin) => origin.trim().replace(/\/$/, ""))
@@ -26,7 +26,7 @@ const bootstrap = async (): Promise<void> => {
     const token = socket.handshake.auth.token as string | undefined;
     if (!token) return next(new Error("Authentication required"));
     try {
-      const payload = verifyToken(token);
+      const payload = verifyAccessToken(token);
       socket.data.userId = payload.userId;
       next();
     } catch {
