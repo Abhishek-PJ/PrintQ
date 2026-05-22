@@ -23,6 +23,11 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
     const token = localStorage.getItem("printq_token") ?? "";
     const sock = io(SOCKET_URL, { auth: { token } });
 
+    sock.io.on("reconnect_attempt", () => {
+      const latest = localStorage.getItem("printq_token") ?? "";
+      (sock as any).auth = { token: latest };
+    });
+
     sock.on("connect", () => {
       sock.emit("join:user", user.id);
     });

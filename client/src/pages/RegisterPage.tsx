@@ -141,7 +141,7 @@ const RegisterPage = () => {
               onBlur={() => touch("name")}
               className={inputCls(!!(touched.name && errs.name))}
               type="text"
-              placeholder="John Smith"
+              placeholder="Your name"
               autoComplete="name"
             />
             {touched.name && errs.name && (
@@ -158,7 +158,7 @@ const RegisterPage = () => {
               onBlur={() => touch("email")}
               className={inputCls(!!(touched.email && errs.email))}
               type="email"
-              placeholder="you@example.com"
+              placeholder="yourmail@example.com"
               autoComplete="email"
             />
             {touched.email && errs.email && (
@@ -179,7 +179,7 @@ const RegisterPage = () => {
                 onBlur={() => touch("mobile")}
                 className={inputCls(!!(touched.mobile && errs.mobile))}
                 type="tel"
-                placeholder="9876543210"
+                placeholder="1234567890"
                 autoComplete="tel-national"
                 maxLength={10}
               />

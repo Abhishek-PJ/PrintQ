@@ -22,6 +22,16 @@ export interface AuthPayload {
   role: UserRole;
 }
 
+export interface AccessTokenPayload extends AuthPayload {
+  type: "access";
+}
+
+export interface RefreshTokenPayload {
+  userId: string;
+  tokenId: string;
+  type: "refresh";
+}
+
 export interface AuthRequest extends Request {
   user?: AuthPayload;
 }

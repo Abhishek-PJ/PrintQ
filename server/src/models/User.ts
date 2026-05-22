@@ -7,6 +7,8 @@ export interface IUser extends Document {
   password: string;
   role: UserRole;
   mobile?: string;
+  refreshTokenIdHash?: string | null;
+  refreshTokenRotatedAt?: Date | null;
 }
 
 const userSchema = new Schema<IUser>(
@@ -16,6 +18,8 @@ const userSchema = new Schema<IUser>(
     password: { type: String, required: true },
     role:     { type: String, enum: ["student", "admin", "superadmin"], default: "student" },
     mobile:   { type: String, trim: true, default: null },
+    refreshTokenIdHash: { type: String, select: false, default: null },
+    refreshTokenRotatedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

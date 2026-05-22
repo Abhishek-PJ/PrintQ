@@ -29,3 +29,13 @@ export const meApi = async (): Promise<{ user: AuthUser }> => {
   const { data } = await api.get<{ user: AuthUser }>("/auth/me");
   return data;
 };
+
+export const refreshApi = async (): Promise<{ token: string; user: AuthUser }> => {
+  const { data } = await api.post<{ token: string; user: AuthUser }>("/auth/refresh");
+  return data;
+};
+
+export const logoutApi = async (): Promise<{ message: string }> => {
+  const { data } = await api.post<{ message: string }>("/auth/logout");
+  return data;
+};

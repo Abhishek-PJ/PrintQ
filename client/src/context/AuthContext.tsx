@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
-import { loginApi, meApi, registerApi } from "../api/auth";
+import { loginApi, logoutApi, meApi, registerApi } from "../api/auth";
 import { AuthUser } from "../types";
 
 interface AuthContextValue {
@@ -56,6 +56,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = (): void => {
+    void logoutApi().catch(() => undefined);
     localStorage.removeItem("printq_token");
     setUser(null);
   };
