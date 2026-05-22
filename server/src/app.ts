@@ -8,6 +8,7 @@ import superadminRoutes from "./routes/superadmin.routes";
 import { env } from "./config/env";
 import { errorHandler, notFound } from "./middleware/error.middleware";
 import { startCleanupJob } from "./jobs/cleanup";
+import path from "path/win32";
 
 export const app = express();
 
@@ -52,3 +53,8 @@ app.use("/api/superadmin", superadminRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
+
+// React routing fix
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "build", "index.html"));
+});
